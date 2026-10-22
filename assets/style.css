@@ -279,6 +279,9 @@ details.edit>summary{font-size:13.5px;color:var(--navy-2)}
 .ledger td.small{font-size:12px;color:var(--ink-3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ledger-input{width:64px;text-align:right;font-family:var(--mono);font-size:13px;padding:4px 6px;border-radius:var(--r-sm)}
 
+.ba-upload{font-size:11px;font-family:var(--sans);text-transform:lowercase;color:var(--ink-3);border-bottom:1px dashed var(--ink-3);margin-left:4px;white-space:nowrap}
+.ba-upload:hover{color:var(--gold-ink)}
+
 /* Opname */
 .op-in{width:120px;text-align:right;font-family:var(--mono);font-size:13.5px;padding:5px 10px;border-radius:var(--r-sm)}
 .op-ket{min-width:160px;padding:5px 10px;font-size:13.5px;border-radius:var(--r-sm)}

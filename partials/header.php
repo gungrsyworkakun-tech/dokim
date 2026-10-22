@@ -64,7 +64,7 @@ $simData = [
       </a>
     <?php endforeach; ?>
   </nav>
-  <div class="side-foot">Direktorat Jenderal Imigrasi</div>
+  
 </aside>
 <div class="scrim" data-toggle-side></div>
 

@@ -2,7 +2,7 @@
 <footer class="foot">
   <div class="foot-id">
     <span class="foot-seal" aria-hidden="true">SD</span>
-    <span>SIM-DOKIM <?= APP_VER ?><em>Sistem Informasi Manajemen Dokumen Keimigrasian &middot; Direktorat Jenderal Imigrasi</em></span>
+    <span>SIM-DOKIM <?= APP_VER ?><em>Sistem Informasi Manajemen Dokumen Keimigrasian &middot; </em></span>
   </div>
   <div class="foot-aux">
     <span class="foot-hint">Tekan <kbd>Ctrl</kbd> <kbd>K</kbd> untuk mencari dari halaman mana pun</span>

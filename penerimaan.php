@@ -183,7 +183,13 @@ include 'partials/header.php'; ?>
         <td><a href="stok_detail.php?id=<?= $r['dokumen_id'] ?>&amp;bln=<?= substr($r['tanggal'], 0, 7) ?>"><?= e($r['nama']) ?></a>
           <?php if ($r['catatan']): ?><div class="sub"><?= e($r['catatan']) ?></div><?php endif; ?></td>
         <td class="num in">+<?= num($r['jumlah']) ?></td>
-        <td class="mono nowrap"><?= e($r['no_ba']) ?></td>
+        <td class="mono nowrap">
+          <?php if (!empty($r['file_ba'])): ?>
+            <a href="uploads/berita_acara/penerimaan/<?= e($r['file_ba']) ?>" target="_blank" rel="noopener" title="Buka berkas BA"><?= e($r['no_ba']) ?></a>
+          <?php else: ?>
+            <?= e($r['no_ba']) ?> <a class="ba-upload" href="berkas_ba.php?tipe=penerimaan&id=<?= $r['id'] ?>" title="Unggah berkas BA">unggah</a>
+          <?php endif; ?>
+        </td>
         <td class="mono nowrap"><?= e($r['seri_awal']) ?> – <?= e($r['seri_akhir']) ?></td>
         <td><?= e($r['petugas'] ?? '-') ?></td>
         <td><span class="st <?= $pend ? 'st-pending' : 'st-ok' ?>"><?= $pend ? 'Menunggu verifikasi' : 'Terverifikasi' ?></span></td>

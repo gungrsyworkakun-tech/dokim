@@ -48,11 +48,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       catch (PDOException $x) { flash('Pengguna sudah punya transaksi sehingga tidak bisa dihapus. Reset passwordnya bila akun tidak dipakai lagi.', 'err'); }
     }
   }
+  elseif ($a === 'tujuan_add') {
+    $nama = trim((string)($_POST['nama'] ?? ''));
+    if ($nama === '' || mb_strlen($nama) > 60) flash('Nama tujuan wajib diisi (maks. 60 karakter).', 'err');
+    else {
+      try { $pdo->prepare('INSERT INTO tujuan_pengeluaran(nama) VALUES(?)')->execute([$nama]); flash("Tujuan \"$nama\" ditambahkan."); }
+      catch (PDOException $x) { flash("Tujuan \"$nama\" sudah ada.", 'err'); }
+    }
+  }
+  elseif ($a === 'tujuan_del') {
+    $s = $pdo->prepare('SELECT nama FROM tujuan_pengeluaran WHERE id=?'); $s->execute([$id]); $nama = $s->fetchColumn();
+    if (!$nama) flash('Tujuan tidak ditemukan.', 'err');
+    else {
+      $s = $pdo->prepare('SELECT COUNT(*) FROM pengeluaran WHERE tujuan=?'); $s->execute([$nama]);
+      if ((int)$s->fetchColumn() > 0) flash("Tujuan \"$nama\" sudah dipakai di data pengeluaran sehingga tidak bisa dihapus.", 'err');
+      else { $pdo->prepare('DELETE FROM tujuan_pengeluaran WHERE id=?')->execute([$id]); flash("Tujuan \"$nama\" dihapus."); }
+    }
+  }
   back('pengaturan.php');
 }
 
 $users = $pdo->query("SELECT u.*, (SELECT COUNT(*) FROM penerimaan WHERE user_id=u.id) + (SELECT COUNT(*) FROM pengeluaran WHERE user_id=u.id) trx
   FROM users u ORDER BY u.role DESC, u.nama")->fetchAll();
+
+try {
+  $tujuanList = $pdo->query("SELECT t.*, (SELECT COUNT(*) FROM pengeluaran WHERE tujuan=t.nama) trx FROM tujuan_pengeluaran t ORDER BY t.nama")->fetchAll();
+  $adaTabelTujuan = true;
+} catch (Throwable $e) { $tujuanList = []; $adaTabelTujuan = false; }
 $bawaan = 0;
 foreach ($users as &$u) {   // tandai akun yang masih memakai password contoh dari database.sql
   $u['bawaan'] = password_verify('Super123!', $u['password']) || password_verify('Admin123!', $u['password']);
@@ -103,5 +125,34 @@ include 'partials/header.php'; ?>
     <?php endforeach; ?>
     </tbody>
   </table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-h"><div><h2>Tujuan pengeluaran</h2>
+    <p>Pilihan "Tujuan" yang muncul di formulir Pengeluaran. Tambah sendiri sesuai kebutuhan kantor.</p></div></div>
+  <?php if (!$adaTabelTujuan): ?>
+    <div class="empty"><b>Fitur ini belum aktif</b>Jalankan <span class="mono">migrasi_tujuan_pengeluaran.sql</span> lewat phpMyAdmin dulu, lalu muat ulang halaman ini.</div>
+  <?php else: ?>
+  <form method="post" class="toolbar">
+    <?= csrf_field() ?><input type="hidden" name="act" value="tujuan_add">
+    <div class="grow"><label for="tj-nama">Tujuan baru</label><input id="tj-nama" name="nama" maxlength="60" placeholder="mis. ULP, cs, atau nama lain" required></div>
+    <div class="tb-act"><button type="submit" class="btn sm">Tambah</button></div>
+  </form>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Tujuan</th><th class="num">Dipakai di</th><th></th></tr></thead>
+    <tbody>
+    <?php if (!$tujuanList): ?>
+      <tr class="empty-row"><td colspan="3"><div class="empty"><b>Belum ada tujuan</b>Tambahkan lewat formulir di atas.</div></td></tr>
+    <?php endif; ?>
+    <?php foreach ($tujuanList as $t): ?>
+      <tr>
+        <td><b><?= e($t['nama']) ?></b></td>
+        <td class="num"><?= num($t['trx']) ?> transaksi</td>
+        <td class="r"><?php if (!$t['trx']): ?><form method="post" class="inline" data-confirm="Hapus tujuan <?= e($t['nama']) ?>?"><?= csrf_field() ?><input type="hidden" name="act" value="tujuan_del"><input type="hidden" name="id" value="<?= $t['id'] ?>"><button class="btn sm danger">Hapus</button></form><?php else: ?><span class="muted">sedang dipakai</span><?php endif; ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+  <?php endif; ?>
 </section>
 <?php include 'partials/footer.php'; ?>

@@ -1,5 +1,10 @@
 <?php require 'config.php'; login_required(); $title = 'Pengeluaran';
-const TUJUAN = ['TPI', 'Doklan', 'Kantor Imigrasi'];
+
+// Daftar tujuan dikelola di halaman Pengaturan. Kalau tabelnya belum ada
+// (migrasi_tujuan_pengeluaran.sql belum dijalankan), pakai daftar bawaan.
+try { $TUJUAN = $pdo->query('SELECT nama FROM tujuan_pengeluaran ORDER BY nama')->fetchAll(PDO::FETCH_COLUMN); }
+catch (Throwable $e) { $TUJUAN = ['TPI', 'Doklan', 'Kantor Imigrasi', 'ULP']; }
+if (!$TUJUAN) $TUJUAN = ['TPI', 'Doklan', 'Kantor Imigrasi', 'ULP'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
@@ -34,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $err = [];
   if ($f['jumlah'] < 1) $err[] = 'Jumlah minimal 1.';
   if (!valid_date($f['tanggal']) || $f['tanggal'] > date('Y-m-d')) $err[] = 'Tanggal tidak valid atau masih di masa depan.';
-  if (!in_array($f['tujuan'], TUJUAN, true)) $err[] = 'Pilih tujuan pengeluaran.';
+  if (!in_array($f['tujuan'], $TUJUAN, true)) $err[] = 'Pilih tujuan pengeluaran.';
   if ($f['no_ba'] === '' || mb_strlen($f['no_ba']) > 60) $err[] = 'No. BA wajib diisi (maks. 60 karakter).';
   if ($f['seri_awal'] === '' || $f['seri_akhir'] === '' || mb_strlen($f['seri_awal']) > 30 || mb_strlen($f['seri_akhir']) > 30) $err[] = 'Nomor seri awal dan akhir wajib diisi (maks. 30 karakter).';
 
@@ -82,7 +87,7 @@ if ($dariToken !== '') {
 $pilih = (int)($old['dokumen_id'] ?? ($batch['dokumen_id'] ?? ($_GET['baru'] ?? 0)));
 
 [$w, $p, $fl] = trx_filter();
-$fl['tujuan'] = in_array($_GET['tujuan'] ?? '', TUJUAN, true) ? $_GET['tujuan'] : '';
+$fl['tujuan'] = in_array($_GET['tujuan'] ?? '', $TUJUAN, true) ? $_GET['tujuan'] : '';
 if ($fl['tujuan'] !== '') { $w .= ' AND p.tujuan=?'; $p[] = $fl['tujuan']; }
 $from = "FROM pengeluaran p JOIN dokumen d ON d.id=p.dokumen_id LEFT JOIN users u ON u.id=p.user_id WHERE $w";
 
@@ -121,7 +126,7 @@ include 'partials/header.php'; ?>
       <div><label for="f-sa">No. seri awal <span class="req">*</span></label><input id="f-sa" name="seri_awal" maxlength="30" class="mono" value="<?= e($old['seri_awal'] ?? ($batch['seri_awal'] ?? '')) ?>" required><div class="hint" data-o="last"></div></div>
       <div><label for="f-sz">No. seri akhir <span class="req">*</span></label><input id="f-sz" name="seri_akhir" maxlength="30" class="mono" value="<?= e($old['seri_akhir'] ?? '') ?>" required></div>
       <div><label for="f-tj">Tujuan <span class="req">*</span></label><select id="f-tj" name="tujuan" required>
-        <?php foreach (TUJUAN as $t): ?><option<?= ($old['tujuan'] ?? '') === $t ? ' selected' : '' ?>><?= $t ?></option><?php endforeach; ?></select></div>
+        <?php foreach ($TUJUAN as $t): ?><option<?= ($old['tujuan'] ?? '') === $t ? ' selected' : '' ?>><?= $t ?></option><?php endforeach; ?></select></div>
       <div class="span2"><label for="f-ba">No. berita acara <span class="req">*</span></label><input id="f-ba" name="no_ba" maxlength="60" class="mono" value="<?= e($old['no_ba'] ?? '') ?>" placeholder="BA/OUT/107/IM/I/2026" required>
         <?php if ($lastBa): ?><div class="hint">BA pengeluaran terakhir: <span class="mono"><?= e($lastBa) ?></span></div><?php endif; ?></div>
       <div class="full"><button type="submit" class="btn">Simpan pengeluaran</button></div>
@@ -151,7 +156,7 @@ include 'partials/header.php'; ?>
     <div><label for="fd">Dokumen</label><select id="fd" name="dok"><option value="">Semua</option>
       <?php foreach ($dok as $d): ?><option value="<?= $d['id'] ?>"<?= $fl['dok'] === (int)$d['id'] ? ' selected' : '' ?>><?= e($d['nama']) ?></option><?php endforeach; ?></select></div>
     <div><label for="ft">Tujuan</label><select id="ft" name="tujuan"><option value="">Semua</option>
-      <?php foreach (TUJUAN as $t): ?><option<?= $fl['tujuan'] === $t ? ' selected' : '' ?>><?= $t ?></option><?php endforeach; ?></select></div>
+      <?php foreach ($TUJUAN as $t): ?><option<?= $fl['tujuan'] === $t ? ' selected' : '' ?>><?= $t ?></option><?php endforeach; ?></select></div>
     <div><label for="f1">Dari</label><input id="f1" type="date" name="dari" value="<?= e($fl['dari']) ?>"></div>
     <div><label for="f2">Sampai</label><input id="f2" type="date" name="sampai" value="<?= e($fl['sampai']) ?>"></div>
     <div class="tb-act"><button class="btn sm">Terapkan</button><?php if ($adaFilter): ?><a class="btn sm ghost" href="pengeluaran.php">Hapus saringan</a><?php endif; ?></div>
@@ -168,7 +173,13 @@ include 'partials/header.php'; ?>
         <td><a href="stok_detail.php?id=<?= $r['dokumen_id'] ?>&amp;bln=<?= substr($r['tanggal'], 0, 7) ?>"><?= e($r['nama']) ?></a></td>
         <td class="num out">−<?= num($r['jumlah']) ?></td>
         <td><?= e($r['tujuan']) ?></td>
-        <td class="mono nowrap"><?= e($r['no_ba']) ?></td>
+        <td class="mono nowrap">
+          <?php if (!empty($r['file_ba'])): ?>
+            <a href="uploads/berita_acara/pengeluaran/<?= e($r['file_ba']) ?>" target="_blank" rel="noopener" title="Buka berkas BA"><?= e($r['no_ba']) ?></a>
+          <?php else: ?>
+            <?= e($r['no_ba']) ?> <a class="ba-upload" href="berkas_ba.php?tipe=pengeluaran&id=<?= $r['id'] ?>" title="Unggah berkas BA">unggah</a>
+          <?php endif; ?>
+        </td>
         <td class="mono nowrap"><?= e($r['seri_awal']) ?> – <?= e($r['seri_akhir']) ?></td>
         <td><?= e($r['petugas'] ?? '-') ?></td>
         <?php if (is_super()): ?><td class="r"><form method="post" class="inline" data-confirm="Hapus pengeluaran <?= e($r['no_ba']) ?>? <?= num($r['jumlah']) ?> keping <?= e($r['nama']) ?> akan dikembalikan ke stok."><?= csrf_field() ?><input type="hidden" name="act" value="del"><input type="hidden" name="id" value="<?= $r['id'] ?>"><input type="hidden" name="ret" value="<?= e($qs) ?>"><button class="btn sm danger">Hapus</button></form></td><?php endif; ?>
