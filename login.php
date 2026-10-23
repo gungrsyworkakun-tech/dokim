@@ -1,5 +1,5 @@
 <?php require_once 'config.php';
-if (!empty($_SESSION['u'])) back('index.php');
+if (!empty($_SESSION['u'])) back(safe_next((string)($_GET['next'] ?? '')) ?: 'index.php');
 
 /* ---------- Keamanan: header + CSP (nonce) ---------- */
 $nonce = base64_encode(random_bytes(16));
@@ -41,6 +41,7 @@ function lock_wait(PDO $pdo, string $ip, string $user): array {   // [detik tung
 }
 
 $err = ''; $wait = 0;
+$next = safe_next((string)($_POST['next'] ?? $_GET['next'] ?? ''));
 if (isset($_GET['exp'])) $err = 'Sesi Anda berakhir karena tidak ada aktivitas. Silakan masuk kembali.';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $user = strtolower(substr(trim((string)($_POST['username'] ?? '')), 0, 40));
@@ -60,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       session_regenerate_id(true);
       $_SESSION = ['u' => ['id'=>(int)$u['id'], 'nama'=>$u['nama'], 'username'=>$u['username'], 'role'=>$u['role']],
                    'ua' => hash('sha256', $_SERVER['HTTP_USER_AGENT'] ?? ''), 'last' => time()];
-      back('index.php');
+      back($next ?: 'index.php');
     }
     $pdo->prepare('INSERT INTO login_attempts(ip,username) VALUES(?,?)')->execute([$ip, $user]);
     usleep(random_int(250000, 500000));
@@ -108,6 +109,11 @@ input:focus{outline:none;border-color:var(--navy-2);box-shadow:0 0 0 3px rgba(42
 .err{background:#fde8e7;border-color:#f9d0ce;color:#8a2017}
 .lock{background:#eef3fb;border-color:#c6d2e4;color:var(--navy)}.lock b{font-family:"IBM Plex Mono",monospace}
 .note{margin-top:28px;padding-top:18px;border-top:1px solid #e2e5ea;font-size:13px;color:var(--ink-3);line-height:1.6}
+.scan-alt{display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid #e2e5ea;text-decoration:none;color:var(--ink-2);transition:background .15s,border-color .15s}
+.scan-alt:hover{background:#eef3fb;border-color:#c6d2e4}
+.scan-alt svg{flex-shrink:0;color:var(--navy-2)}
+.scan-alt span{display:block;font-size:13.5px;font-weight:500;color:var(--ink)}
+.scan-alt small{display:block;font-size:12px;color:var(--ink-3);margin-top:1px}
 @media(max-width:820px){
   body{grid-template-columns:1fr;grid-template-rows:auto 1fr}
   .info{padding:24px 28px;gap:0}
@@ -134,6 +140,7 @@ input:focus{outline:none;border-color:var(--navy-2);box-shadow:0 0 0 3px rgba(42
   <?php elseif ($err): ?><div class="err" role="alert"><?= e($err) ?></div><?php endif; ?>
 
   <input type="hidden" name="csrf" value="<?= e($csrf) ?>">
+  <?php if ($next): ?><input type="hidden" name="next" value="<?= e($next) ?>"><?php endif; ?>
   <div class="fld"><label for="u">Username</label>
     <input id="u" name="username" maxlength="40" value="<?= e($_POST['username'] ?? '') ?>" required autofocus autocomplete="username" autocapitalize="none" spellcheck="false"></div>
   <div class="fld"><label for="p">Password</label><div class="wrap">
@@ -142,6 +149,10 @@ input:focus{outline:none;border-color:var(--navy-2);box-shadow:0 0 0 3px rgba(42
     <div class="cw" id="cw" hidden>Caps Lock sedang aktif.</div></div>
   <button class="go" id="b">Masuk</button>
   <p class="note">Sesi berakhir otomatis setelah 30 menit tanpa aktivitas. Lupa password? Minta superadmin meresetnya di menu Pengguna.</p>
+  <a class="scan-alt" href="scan.php">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 6V3.5h3.5M17 6V3.5h-3.5M3 14v2.5h3.5M17 14v2.5h-3.5"/><path d="M6 6.5v7M8.4 6.5v7M10.6 6.5v7M12 6.5v7M14 6.5v7" stroke-width="1.4"/></svg>
+    <span>Cuma mau cek barcode dokumen?<small>Tidak perlu masuk — pindai atau cari nomor seri di sini</small></span>
+  </a>
 </form>
 </main>
 <script nonce="<?= $nonce ?>">
@@ -149,6 +160,6 @@ const $=i=>document.getElementById(i),t=$('t'),p=$('p'),b=$('b'),f=$('card'),cw=
 t.onclick=()=>{const h=p.type==='password';p.type=h?'text':'password';t.textContent=h?'Sembunyikan':'Tampilkan'};
 ['keyup','keydown'].forEach(ev=>p.addEventListener(ev,e=>{cw.hidden=!(e.getModifierState&&e.getModifierState('CapsLock'))}));
 f.addEventListener('submit',e=>{if(!f.u.value.trim()||!p.value){e.preventDefault();(f.u.value.trim()?p:f.u).focus();return}b.disabled=true;b.textContent='Memeriksa…'});
-if(lk){let w=+lk.dataset.wait;b.disabled=true;const s=$('cd'),tick=()=>{s.textContent=Math.floor(w/60)+':'+String(w%60).padStart(2,'0');if(w--<=0)location.href='login.php'};tick();setInterval(tick,1000)}
+if(lk){let w=+lk.dataset.wait;b.disabled=true;const s=$('cd'),tick=()=>{s.textContent=Math.floor(w/60)+':'+String(w%60).padStart(2,'0');if(w--<=0)location.href=location.pathname+location.search};tick();setInterval(tick,1000)}
 </script>
 </body></html>

@@ -16,7 +16,7 @@ define('DB_PASS', getenv('DB_PASS') ?: 'dede');
 define('SESSION_IDLE', 1800);                 // sesi habis setelah 30 menit tidak aktif
 define('APP_TZ', 'Asia/Jakarta');
 define('APP_KOTA', getenv('APP_KOTA') ?: 'Jakarta');   // dipakai di tanda tangan laporan
-define('APP_VER', '3.7');
+define('APP_VER', '4.2');
 define('STOK_KRITIS', 100);                   // stok <= ini dianggap kritis
 define('STOK_RENDAH', 200);                   // stok <= ini dianggap rendah
 define('HARI_RATA', 90);                      // jendela hitung rata-rata pemakaian harian
@@ -136,6 +136,27 @@ function valid_date($d) {
 }
 }
 
+/* ---------- Nomor seri: pecah jadi awalan huruf + angka di akhir, mis. "A00123" -> ['A', '00123'] ---------- */
+if (!function_exists('seri_pecah')) {
+function seri_pecah(string $s): ?array {
+  if (preg_match('/^(.*?)(\d+)$/', trim($s), $m)) return ['prefix' => $m[1], 'num' => $m[2]];
+  return null;
+}
+}
+
+/* Cek apakah $cari berada di rentang seri_awal..seri_akhir (awalan harus sama, angka dibandingkan sebagai angka) */
+if (!function_exists('seri_dalam_rentang')) {
+function seri_dalam_rentang(string $cari, string $awal, string $akhir): bool {
+  $c = seri_pecah($cari); $a = seri_pecah($awal); $z = seri_pecah($akhir);
+  if (!$c || !$a || !$z) return false;
+  if (strcasecmp(trim($c['prefix']), trim($a['prefix'])) !== 0) return false;
+  if (strcasecmp(trim($a['prefix']), trim($z['prefix'])) !== 0) return false;
+  $cn = (int)$c['num']; $an = (int)$a['num']; $zn = (int)$z['num'];
+  [$lo, $hi] = $an <= $zn ? [$an, $zn] : [$zn, $an];
+  return $cn >= $lo && $cn <= $hi;
+}
+}
+
 if (!function_exists('_terbilang')) {
 /** Konversi angka ke kata bahasa Indonesia (dipakai internal oleh terbilang()) */
 function _terbilang(int $n): string {
@@ -210,16 +231,28 @@ function is_super() {
 }
 }
 
+if (!function_exists('safe_next')) {
+function safe_next(string $raw): string {
+  // Hanya izinkan path lokal "halaman.php" atau "halaman.php?query" biar tidak bisa dipakai untuk open-redirect.
+  if (preg_match('/^[a-z0-9_\-]+\.php(\?[a-zA-Z0-9=&_\-%.]*)?$/', $raw)) return $raw;
+  return '';
+}
+}
+
 if (!function_exists('login_required')) {
 function login_required() {
-  if (empty($_SESSION['u'])) { header('Location: login.php'); exit; }
+  $next = safe_next(ltrim((string)($_SERVER['REQUEST_URI'] ?? ''), '/'));
+  if (empty($_SESSION['u'])) {
+    header('Location: login.php' . ($next ? '?next=' . urlencode($next) : ''));
+    exit;
+  }
 
   $ua = hash('sha256', $_SERVER['HTTP_USER_AGENT'] ?? '');
   $idle = time() - ($_SESSION['last'] ?? 0);
   if (($_SESSION['ua'] ?? '') !== $ua || $idle > SESSION_IDLE) {   // idle terlalu lama / browser berubah
     $_SESSION = [];
     session_destroy();
-    header('Location: login.php?exp=1');
+    header('Location: login.php?exp=1' . ($next ? '&next=' . urlencode($next) : ''));
     exit;
   }
   $_SESSION['last'] = time();

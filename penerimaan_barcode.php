@@ -75,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $fotos = $pdo->prepare('SELECT * FROM penerimaan_foto WHERE penerimaan_id=? ORDER BY id'); $fotos->execute([$id]); $fotos = $fotos->fetchAll();
-$qrUrl = $r['barcode_token'] ? app_url('pengeluaran.php?dari=' . $r['barcode_token']) : '';
+$qrUrl = $r['barcode_token'] ? app_url('cek_barcode.php?token=' . $r['barcode_token']) : '';
 include 'partials/header.php'; ?>
 
 <section class="panel noprint">
@@ -109,7 +109,7 @@ include 'partials/header.php'; ?>
 
 <?php if ($r['barcode_token']): ?>
 <section class="panel">
-  <div class="panel-h noprint"><div><h2>Label barcode</h2><p>Tempel label ini di kemasan/box batch. Saat barang keluar, scan lewat menu <a href="scan.php">Scan barcode</a> untuk langsung membuka formulir pengeluaran dokumen ini.</p></div>
+  <div class="panel-h noprint"><div><h2>Label barcode</h2><p>Tempel label ini di kemasan/box batch. Siapapun boleh scan untuk melihat detail batch ini tanpa harus masuk (login); untuk mencatat pengeluaran dari batch ini, login dulu lewat menu <a href="scan.php">Scan barcode</a>.</p></div>
     <button type="button" class="btn sm" onclick="print()">Cetak label</button>
   </div>
   <div class="panel-b label-wrap" id="label">
@@ -128,11 +128,13 @@ include 'partials/header.php'; ?>
 <?php endif; ?>
 
 <?php if ($r['barcode_token']): ?>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+<script src="assets/qrcode.min.js?v=<?= APP_VER ?>"></script>
 <script>
 (() => {
   const canvas = document.getElementById('qr');
-  if (canvas && typeof QRCode !== 'undefined') QRCode.toCanvas(canvas, canvas.dataset.url, { width: 160, margin: 1 }, err => { if (err) canvas.replaceWith(Object.assign(document.createElement('p'), { className: 'bad-text', textContent: 'QR gagal dibuat: ' + err.message })); });
+  if (!canvas) return;
+  if (typeof QRCode === 'undefined') { canvas.replaceWith(Object.assign(document.createElement('p'), { className: 'bad-text', textContent: 'Pustaka QR gagal dimuat. Muat ulang halaman ini.' })); return; }
+  QRCode.toCanvas(canvas, canvas.dataset.url, { width: 160, margin: 1 }, err => { if (err) canvas.replaceWith(Object.assign(document.createElement('p'), { className: 'bad-text', textContent: 'QR gagal dibuat: ' + err.message })); });
 })();
 </script>
 <?php endif; ?>
