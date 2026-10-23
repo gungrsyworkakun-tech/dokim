@@ -16,7 +16,7 @@ define('DB_PASS', getenv('DB_PASS') ?: 'dede');
 define('SESSION_IDLE', 1800);                 // sesi habis setelah 30 menit tidak aktif
 define('APP_TZ', 'Asia/Jakarta');
 define('APP_KOTA', getenv('APP_KOTA') ?: 'Jakarta');   // dipakai di tanda tangan laporan
-define('APP_VER', '4.2');
+define('APP_VER', '4.3');
 define('STOK_KRITIS', 100);                   // stok <= ini dianggap kritis
 define('STOK_RENDAH', 200);                   // stok <= ini dianggap rendah
 define('HARI_RATA', 90);                      // jendela hitung rata-rata pemakaian harian

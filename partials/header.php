@@ -8,7 +8,7 @@ $menu = [
   'opname.php'      => 'Opname fisik',
   'scan.php'        => 'Scan barcode',
 ];
-if (is_super()) $menu['pengaturan.php'] = 'Pengguna';
+if (is_super()) { $menu['impor_excel.php'] = 'Impor Excel'; $menu['pengaturan.php'] = 'Pengguna'; }
 $cur = basename($_SERVER['PHP_SELF']); if ($cur === 'stok_detail.php') $cur = 'stok.php';
 
 /* ikon kecil per halaman, ditaruh di sebelah judul pada bar atas */
@@ -22,6 +22,7 @@ $pageIcons = [
   'scan.php'         => '<path d="M3 6V3.5h3.5M17 6V3.5h-3.5M3 14v2.5h3.5M17 14v2.5h-3.5" fill="none"/><path d="M6 6.5v7M8.4 6.5v7M10.6 6.5v7M12 6.5v7M14 6.5v7" fill="none" stroke-width="1.6"/>',
   'pengaturan.php'   => '<circle cx="7.3" cy="8" r="2.6" fill="none"/><path d="M2.6 16c.6-2.6 2.4-4 4.7-4s4.1 1.4 4.7 4" fill="none"/><circle cx="14.2" cy="7.2" r="2" fill="none"/><path d="M12.4 10.3c1.9.1 3.4 1.4 3.9 3.7" fill="none"/>',
   'akun.php'         => '<circle cx="10" cy="7" r="3.2" fill="none"/><path d="M4 17c.9-3.4 3-5.1 6-5.1s5.1 1.7 6 5.1" fill="none"/>',
+  'impor_excel.php'  => '<path d="M10 3v9M6.5 8.5 10 12l3.5-3.5" fill="none"/><path d="M4 14.5v1.3A1.2 1.2 0 0 0 5.2 17h9.6A1.2 1.2 0 0 0 16 15.8v-1.3" fill="none"/>',
 ];
 $pageIcon = $pageIcons[$cur] ?? '<rect x="4" y="2.5" width="12" height="15" rx="1.3" fill="none"/><path d="M7 7h6M7 10.3h6M7 13.6h3.5"/>';
 
@@ -64,7 +65,7 @@ $simData = [
       </a>
     <?php endforeach; ?>
   </nav>
-  
+  <div class="side-foot">Direktorat Jenderal Imigrasi</div>
 </aside>
 <div class="scrim" data-toggle-side></div>
 
