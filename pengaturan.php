@@ -4,6 +4,47 @@ $me = (int)$_SESSION['u']['id'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
   $a  = $_POST['act'] ?? '';
+
+  if ($a === 'ai_tes') {   // tes koneksi AI pakai isian yang sedang diketik (belum disimpan juga boleh), balas JSON langsung
+    ini_set('display_errors', '0');
+    $balas = function (bool $ok, string $pesan) {   // buang keluaran nyasar (warning dsb.) supaya JSON tetap bersih
+      while (ob_get_level() > 0) ob_end_clean();
+      header('Content-Type: application/json; charset=utf-8');
+      echo json_encode(['ok' => $ok, 'pesan' => $pesan], JSON_UNESCAPED_UNICODE); exit;
+    };
+    try {
+      $key = trim((string)($_POST['openrouter_api_key'] ?? '')) ?: app_setting('openrouter_api_key', OPENROUTER_API_KEY);
+      $model = trim((string)($_POST['openrouter_model'] ?? '')) ?: app_setting('openrouter_model', OPENROUTER_MODEL);
+      $baseUrl = rtrim(trim((string)($_POST['openrouter_base_url'] ?? '')) ?: app_setting('openrouter_base_url', OPENROUTER_BASE_URL), '/');
+      if ($key === '') $balas(false, 'API key belum diisi.');
+      if (!preg_match('#^https://#i', $baseUrl)) $balas(false, 'Base URL tidak valid, harus diawali https://');
+      if (!function_exists('curl_init')) $balas(false, 'Ekstensi PHP "curl" belum terpasang di server ini, jadi chat AI tidak bisa menghubungi internet. Pasang php-curl dulu.');
+
+      $ch = curl_init($baseUrl . '/chat/completions');
+      curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_CONNECTTIMEOUT => 6,
+        CURLOPT_TIMEOUT => 12,
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $key, 'Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode(['model' => $model, 'messages' => [['role' => 'user', 'content' => 'ping']], 'max_tokens' => 20], JSON_UNESCAPED_UNICODE),
+      ]);
+      $raw = curl_exec($ch);
+      $kode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+      $errCurl = curl_error($ch);
+      curl_close($ch);
+
+      if ($raw === false) $balas(false, "Server ini tidak bisa menghubungi layanan AI ($errCurl). Kemungkinan server tidak punya akses internet keluar (cek DNS/firewall Docker), atau Base URL salah.");
+      $resp = json_decode($raw, true);
+      if ($kode === 200 && isset($resp['choices'][0]['message'])) $balas(true, "Berhasil terhubung ke layanan AI (model: $model).");
+      $err = $resp['error'] ?? null;
+      $pesanError = is_array($err) ? ($err['message'] ?? json_encode($err)) : ($err ?: "balasan tidak dikenali: " . mb_substr(strip_tags((string)$raw), 0, 150));
+      $balas(false, "Gagal (kode $kode): $pesanError");
+    } catch (Throwable $e) {
+      $balas(false, 'Terjadi error di server: ' . $e->getMessage());
+    }
+  }
+
   $id = (int)($_POST['id'] ?? 0);
   $superLain = function ($id) use ($pdo) {   // jumlah superadmin selain $id
     $s = $pdo->prepare("SELECT COUNT(*) FROM users WHERE role='superadmin' AND id<>?"); $s->execute([$id]); return (int)$s->fetchColumn();
@@ -56,6 +97,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       catch (PDOException $x) { flash("Tujuan \"$nama\" sudah ada.", 'err'); }
     }
   }
+  elseif ($a === 'ai_setel') {
+    $key = trim((string)($_POST['openrouter_api_key'] ?? ''));
+    $model = trim((string)($_POST['openrouter_model'] ?? ''));
+    $baseUrl = trim((string)($_POST['openrouter_base_url'] ?? ''));
+    $sudahAda = app_setting('openrouter_api_key', OPENROUTER_API_KEY) !== '';
+    if ($key === '' && !$sudahAda) flash('API key wajib diisi untuk mengaktifkan chat AI.', 'err');
+    elseif (mb_strlen($key) > 200 || mb_strlen($model) > 100 || mb_strlen($baseUrl) > 200) flash('Isian terlalu panjang.', 'err');
+    elseif ($baseUrl !== '' && !preg_match('#^https://#i', $baseUrl)) flash('Base URL harus diawali https://', 'err');
+    else {
+      try {
+        if ($key !== '') app_setting_simpan('openrouter_api_key', $key);   // kosong = key lama tetap dipakai
+        app_setting_simpan('openrouter_model', $model !== '' ? $model : OPENROUTER_MODEL);
+        app_setting_simpan('openrouter_base_url', $baseUrl !== '' ? rtrim($baseUrl, '/') : OPENROUTER_BASE_URL);
+        flash('Pengaturan chat AI disimpan. Muat ulang halaman mana pun untuk melihat tombol chat-nya di pojok kanan bawah.');
+      } catch (Throwable $e) { flash('Gagal menyimpan: tabel pengaturan belum ada. Jalankan migrasi_setelan.sql lewat phpMyAdmin dulu.', 'err'); }
+    }
+  }
+  elseif ($a === 'ai_hapus') {
+    try { app_setting_simpan('openrouter_api_key', ''); flash('Chat AI dinonaktifkan.'); }
+    catch (Throwable $e) { flash('Gagal menyimpan: tabel pengaturan belum ada. Jalankan migrasi_setelan.sql lewat phpMyAdmin dulu.', 'err'); }
+  }
   elseif ($a === 'tujuan_del') {
     $s = $pdo->prepare('SELECT nama FROM tujuan_pengeluaran WHERE id=?'); $s->execute([$id]); $nama = $s->fetchColumn();
     if (!$nama) flash('Tujuan tidak ditemukan.', 'err');
@@ -80,6 +142,12 @@ foreach ($users as &$u) {   // tandai akun yang masih memakai password contoh da
   $u['bawaan'] = password_verify('Super123!', $u['password']) || password_verify('Admin123!', $u['password']);
   if ($u['bawaan']) $bawaan++;
 } unset($u);
+$aiKeyNilai = app_setting('openrouter_api_key', OPENROUTER_API_KEY);
+$aiModelNilai = app_setting('openrouter_model', OPENROUTER_MODEL);
+$aiBaseUrlNilai = app_setting('openrouter_base_url', OPENROUTER_BASE_URL);
+$aiAktif = $aiKeyNilai !== '';
+$aiKeyMasked = $aiAktif ? substr($aiKeyNilai, 0, 7) . str_repeat('•', 10) . substr($aiKeyNilai, -4) : '';
+
 include 'partials/header.php'; ?>
 
 <?php if ($bawaan): ?>
@@ -155,4 +223,102 @@ include 'partials/header.php'; ?>
   </table></div>
   <?php endif; ?>
 </section>
+
+<section class="panel">
+  <div class="panel-h"><div><h2>Chat AI</h2>
+    <p>Widget tanya-jawab di pojok kanan bawah (muncul di semua halaman setelah login). Bisa pakai <b>Groq</b> (ada tier gratis, API key dari <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com</a>) atau <b>OpenRouter</b> (<a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai</a>, berbayar per pertanyaan). Pilih penyedianya, tempel API key, lalu klik Tes koneksi.</p></div>
+    <span class="tag<?= $aiAktif ? '' : ' out' ?>"><?= $aiAktif ? 'Aktif' : 'Belum aktif' ?></span>
+  </div>
+  <div class="panel-b">
+    <?php if ($aiAktif): ?><p class="hint" style="margin-bottom:14px">API key saat ini: <span class="mono"><?= e($aiKeyMasked) ?></span> &middot; Model: <span class="mono"><?= e($aiModelNilai) ?></span> &middot; Base URL: <span class="mono"><?= e($aiBaseUrlNilai) ?></span></p><?php endif; ?>
+    <form method="post" class="grid-form" autocomplete="off">
+      <?= csrf_field() ?><input type="hidden" name="act" value="ai_setel">
+      <div class="span2"><label for="ai-penyedia">Penyedia AI</label>
+        <select id="ai-penyedia">
+          <option value="groq">Groq (ada tier gratis)</option>
+          <option value="openrouter">OpenRouter</option>
+          <option value="lain">Lainnya (isi Base URL sendiri)</option>
+        </select>
+        <div class="hint">Memilih penyedia otomatis mengisi Base URL dan Model di bawah. API key harus sesuai penyedianya — key Groq tidak bisa dipakai di OpenRouter, dan sebaliknya.</div></div>
+      <div class="span2"><label for="ai-key">API key <span class="req">*</span></label>
+        <input id="ai-key" name="openrouter_api_key" maxlength="200" class="mono" placeholder="sk-or-v1-…" autocomplete="off">
+        <div class="hint"><?= $aiAktif ? 'Kosongkan kalau tidak mau mengganti key yang sudah tersimpan.' : 'Belum diisi — chat AI masih tersembunyi dari semua pengguna.' ?></div></div>
+      <div><label for="ai-baseurl">Base URL</label>
+        <input id="ai-baseurl" name="openrouter_base_url" maxlength="200" class="mono" value="<?= e($aiBaseUrlNilai) ?>" placeholder="<?= e(OPENROUTER_BASE_URL) ?>">
+        <div class="hint">Alamat API-nya. Biarkan bawaan kecuali mau ganti ke proxy/provider lain yang kompatibel (format sama seperti OpenAI).</div></div>
+      <div><label for="ai-model">Model</label>
+        <input id="ai-model" name="openrouter_model" maxlength="100" class="mono" value="<?= e($aiModelNilai) ?>" placeholder="<?= e(OPENROUTER_MODEL) ?>">
+        <div class="hint">Daftar model: console.groq.com/docs/models (Groq) atau openrouter.ai/models. Kalau muncul "model tidak ada / tidak punya akses", ganti ke model lain dari daftar itu.</div></div>
+      <div class="full" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button type="submit" class="btn sm">Simpan</button>
+        <button type="button" id="ai-tes-btn" class="btn sm ghost">Tes koneksi</button>
+        <span id="ai-tes-hasil" style="font-size:.92em"></span>
+      </div>
+    </form>
+    <?php if ($aiAktif): ?>
+      <form method="post" class="inline" style="margin-top:10px" data-confirm="Nonaktifkan chat AI? Tombol chat akan hilang dari semua halaman sampai API key diisi lagi.">
+        <?= csrf_field() ?><input type="hidden" name="act" value="ai_hapus">
+        <button type="submit" class="btn sm danger">Nonaktifkan chat AI</button>
+      </form>
+    <?php endif; ?>
+  </div>
+</section>
+
+<script>
+(function () {
+  var btn = document.getElementById('ai-tes-btn');
+  if (!btn) return;
+  var hasil = document.getElementById('ai-tes-hasil');
+  var form = btn.closest('form');
+
+  // Pilihan penyedia: cuma membantu mengisi Base URL & Model, tidak disimpan sendiri.
+  var PRESET = {
+    groq: { url: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-20b' },
+    openrouter: { url: 'https://openrouter.ai/api/v1', model: 'google/gemini-2.0-flash-001' }
+  };
+  var pilih = document.getElementById('ai-penyedia');
+  var inUrl = document.getElementById('ai-baseurl'), inModel = document.getElementById('ai-model');
+  var urlSekarang = inUrl.value.replace(/\/+$/, '');
+  pilih.value = urlSekarang.indexOf('groq.com') > -1 ? 'groq' : urlSekarang.indexOf('openrouter.ai') > -1 ? 'openrouter' : 'lain';
+  pilih.addEventListener('change', function () {
+    var p = PRESET[pilih.value];
+    if (!p) return;
+    inUrl.value = p.url; inModel.value = p.model;
+    hasil.textContent = 'Base URL dan Model sudah diisi otomatis. Tempel API key-nya lalu klik Tes koneksi.';
+    hasil.style.color = '';
+  });
+  btn.addEventListener('click', function () {
+    var labelAsli = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Menguji…';
+    hasil.textContent = ''; hasil.style.color = '';
+    var data = new URLSearchParams({
+      act: 'ai_tes',
+      csrf: form.querySelector('[name="csrf"]').value,
+      openrouter_api_key: form.querySelector('#ai-key').value,
+      openrouter_base_url: form.querySelector('#ai-baseurl').value,
+      openrouter_model: form.querySelector('#ai-model').value
+    });
+    fetch(location.href, { method: 'POST', body: data })
+      .then(function (r) {
+        return r.text().then(function (t) {
+          try { return JSON.parse(t); }
+          catch (e) {
+            var cuplikan = t.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+            return { ok: false, pesan: 'Server aplikasi membalas bukan hasil tes (kode ' + r.status + '): ' + (cuplikan || '(kosong)') };
+          }
+        });
+      })
+      .then(function (j) {
+        hasil.textContent = j.pesan;
+        hasil.style.color = j.ok ? '#1a7f37' : '#b42318';
+      })
+      .catch(function (e) {
+        hasil.textContent = 'Permintaan tes terputus sebelum ada balasan (' + e.message + '). Biasanya karena server menunggu terlalu lama.';
+        hasil.style.color = '#b42318';
+      })
+      .finally(function () { btn.disabled = false; btn.textContent = labelAsli; });
+  });
+})();
+</script>
+
 <?php include 'partials/footer.php'; ?>

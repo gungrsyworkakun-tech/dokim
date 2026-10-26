@@ -16,10 +16,15 @@ define('DB_PASS', getenv('DB_PASS') ?: 'dede');
 define('SESSION_IDLE', 1800);                 // sesi habis setelah 30 menit tidak aktif
 define('APP_TZ', 'Asia/Jakarta');
 define('APP_KOTA', getenv('APP_KOTA') ?: 'Jakarta');   // dipakai di tanda tangan laporan
-define('APP_VER', '4.3');
+define('APP_VER', '4.6');
 define('STOK_KRITIS', 100);                   // stok <= ini dianggap kritis
 define('STOK_RENDAH', 200);                   // stok <= ini dianggap rendah
 define('HARI_RATA', 90);                      // jendela hitung rata-rata pemakaian harian
+
+/* ---------- Chat AI (opsional — kosongkan OPENROUTER_API_KEY utk menonaktifkan) ---------- */
+define('OPENROUTER_API_KEY', getenv('OPENROUTER_API_KEY') ?: '');   // isi dengan API key dari openrouter.ai/keys
+define('OPENROUTER_MODEL', getenv('OPENROUTER_MODEL') ?: 'google/gemini-2.0-flash-001');
+define('OPENROUTER_BASE_URL', getenv('OPENROUTER_BASE_URL') ?: 'https://openrouter.ai/api/v1');   // ganti kalau mau pakai proxy/provider lain yang kompatibel
 
 /* ---------- Kop surat & penandatangan berita acara opname (ganti sesuai kantor Anda) ---------- */
 define('APP_KOP1', 'KEMENTERIAN IMIGRASI DAN PEMASYARAKATAN REPUBLIK INDONESIA');
@@ -219,6 +224,34 @@ function hari_txt($h) {
   if ($h === null) return '<span class="muted" title="Belum ada pengeluaran dalam ' . HARI_RATA . ' hari terakhir">—</span>';
   if ($h <= 0) return 'Sudah habis';
   return '± ' . num($h) . ' hari';
+}
+}
+
+/* ============================================================
+ * 5b. PENGATURAN APLIKASI TERSIMPAN DI DATABASE (tabel setelan)
+ * ============================================================ */
+if (!function_exists('app_setting')) {
+/** Ambil nilai pengaturan dari tabel `setelan` (diisi lewat halaman Pengaturan).
+ *  Kalau belum pernah diisi (atau tabelnya belum ada — migrasi belum dijalankan),
+ *  balik ke $default (biasanya konstanta/env dari atas file ini). */
+function app_setting(string $key, string $default = ''): string {
+  static $cache = [];
+  if (array_key_exists($key, $cache)) return $cache[$key];
+  global $pdo;
+  try {
+    $s = $pdo->prepare('SELECT nilai FROM setelan WHERE nama_key=?');
+    $s->execute([$key]);
+    $v = $s->fetchColumn();
+    return $cache[$key] = ($v !== false && $v !== '') ? $v : $default;
+  } catch (Throwable $e) {
+    return $cache[$key] = $default;   // tabel `setelan` belum ada — jalankan migrasi_setelan.sql
+  }
+}
+}
+if (!function_exists('app_setting_simpan')) {
+function app_setting_simpan(string $key, string $nilai): void {
+  global $pdo;
+  $pdo->prepare('INSERT INTO setelan(nama_key,nilai) VALUES(?,?) ON DUPLICATE KEY UPDATE nilai=VALUES(nilai)')->execute([$key, $nilai]);
 }
 }
 

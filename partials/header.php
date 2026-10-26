@@ -38,6 +38,7 @@ if (is_super()) {
 /* data untuk pencarian cepat & bantuan isi formulir (assets/app.js) */
 $simData = [
   'idle' => SESSION_IDLE,
+  'csrf' => csrf(),
   'dok'  => $pdo->query("SELECT d.id, d.kode, d.nama, d.stok, d.satuan,
       (SELECT p.seri_akhir FROM penerimaan p  WHERE p.dokumen_id=d.id ORDER BY p.tanggal DESC, p.id DESC LIMIT 1) last_in,
       (SELECT k.seri_akhir FROM pengeluaran k WHERE k.dokumen_id=d.id ORDER BY k.tanggal DESC, k.id DESC LIMIT 1) last_out
