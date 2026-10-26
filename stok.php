@@ -6,15 +6,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($act === 'add') {
     $kode  = strtoupper(trim((string)($_POST['kode'] ?? '')));
     $nama  = trim((string)($_POST['nama'] ?? ''));
-    $sat   = in_array($_POST['satuan'] ?? '', ['LEMBAR', 'BUKU'], true) ? $_POST['satuan'] : 'LEMBAR';
+    $sat   = strtoupper(trim(preg_replace('/\s+/', ' ', (string)($_POST['satuan'] ?? ''))));   // satuan bebas diketik admin
     $harga = (int)($_POST['harga'] ?? -1);
     if ($kode === '' || $nama === '' || strlen($kode) > 20 || mb_strlen($nama) > 100 || $harga < 0) {
       flash('Kode, nama, dan harga wajib diisi. Kode maks. 20 karakter, harga tidak boleh negatif.', 'err');
+    } elseif (!preg_match('#^[A-Z0-9][A-Z0-9 ./-]{0,29}$#', $sat)) {
+      flash('Satuan wajib diisi (maks. 30 karakter), hanya huruf, angka, spasi, titik, garis miring, atau minus. Contoh: LEMBAR, BUKU, ROLL.', 'err');
     } else {
       try {
         $pdo->prepare('INSERT INTO dokumen(kode,nama,satuan,harga) VALUES(?,?,?,?)')->execute([$kode, $nama, $sat, $harga]);
         flash("Jenis dokumen $kode ditambahkan. Stok awal 0, catat penerimaan untuk mengisinya.");
-      } catch (PDOException $x) { flash("Kode $kode sudah dipakai dokumen lain.", 'err'); }
+      } catch (PDOException $x) {
+        if ((int)($x->errorInfo[1] ?? 0) === 1062) flash("Kode $kode sudah dipakai dokumen lain.", 'err');
+        else flash('Gagal menyimpan. Kalau satuannya baru, jalankan dulu migrasi_satuan_bebas.sql lewat phpMyAdmin.', 'err');
+      }
     }
   }
   if ($act === 'del') {
@@ -59,7 +64,9 @@ include 'partials/header.php'; ?>
     <?= csrf_field() ?><input type="hidden" name="act" value="add">
     <div><label for="a-kode">Kode <span class="req">*</span></label><input id="a-kode" name="kode" maxlength="20" class="mono" placeholder="mis. EP-48" required autocapitalize="characters"></div>
     <div class="span2"><label for="a-nama">Nama dokumen <span class="req">*</span></label><input id="a-nama" name="nama" maxlength="100" placeholder="mis. E-Paspor 48 Halaman" required></div>
-    <div><label for="a-sat">Satuan</label><select id="a-sat" name="satuan"><option value="LEMBAR">Lembar</option><option value="BUKU">Buku</option></select></div>
+    <div><label for="a-sat">Satuan <span class="req">*</span></label><input id="a-sat" name="satuan" list="a-sat-list" maxlength="30" value="LEMBAR" placeholder="mis. LEMBAR, BUKU, ROLL" autocomplete="off" autocapitalize="characters" required>
+      <datalist id="a-sat-list"><option value="LEMBAR"><option value="BUKU"><option value="KEPING"><option value="BUAH"><option value="ROLL"><option value="PAK"><option value="BOX"><option value="SET"></datalist>
+      <div class="hint">Pilih dari daftar atau ketik sendiri kalau satuannya belum ada.</div></div>
     <div><label for="a-harga">Harga satuan (Rp) <span class="req">*</span></label><input id="a-harga" type="number" min="0" name="harga" inputmode="numeric" required></div>
     <div class="full"><button type="submit" class="btn">Simpan jenis dokumen</button></div>
   </form>

@@ -72,7 +72,7 @@ if (!headers_sent()) {
   header('X-Frame-Options: DENY');
   header('X-Content-Type-Options: nosniff');
   header('Referrer-Policy: same-origin');
-  header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+  header('Permissions-Policy: camera=(self), microphone=(), geolocation=()');   // kamera dipakai halaman scan barcode (hanya dari situs ini sendiri)
   header('Cache-Control: no-store');
 }
 
