@@ -72,6 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     else {
       $s = $pdo->prepare('SELECT 1 FROM penerimaan WHERE no_ba=? AND dokumen_id=?'); $s->execute([$f['no_ba'], $f['dokumen_id']]);
       if ($s->fetch()) $err[] = 'No. BA ' . $f['no_ba'] . ' sudah pernah dicatat untuk dokumen ini.';
+      elseif ($tb = seri_terima_tabrakan($pdo, (int)$f['dokumen_id'], $f['seri_awal'], $f['seri_akhir'])) $err[] = $tb . ' Kemungkinan penerimaan ini sudah pernah dicatat.';
     }
     if ($err) $pdo->rollBack();
     else {

@@ -1,6 +1,7 @@
 <?php require 'config.php'; super_required(); $title = 'Impor dari Excel';
 require 'lib/xlsx_reader.php';
 require 'lib/impor_dokim.php';
+require_once 'lib/seri_stok.php';
 
 const IMPOR_MB_MAX = 8;             // maks ukuran berkas .xlsx yang diterima
 const IMPOR_SKOR_OTOMATIS = 55;     // di atas ini, sheet otomatis dipetakan ke dokumen tanpa perlu dipilih manual
@@ -56,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'import')
     if ($jenis === 'penerimaan') {
       $s = $pdo->prepare('SELECT 1 FROM penerimaan WHERE no_ba=? AND dokumen_id=?'); $s->execute([$noBa, $dokumenId]);
       if ($s->fetch()) { $pdo->rollBack(); $dilewati++; continue; }     // sudah ada (barangkali ditambahkan orang lain barusan)
+      if ($seriAwal && $seriAkhir && seri_terima_tabrakan($pdo, (int)$dokumenId, (string)$seriAwal, (string)$seriAkhir)) { $pdo->rollBack(); $dilewati++; continue; }   // nomor seri sama dengan penerimaan lain: dianggap dobel
 
       $pdo->prepare('INSERT INTO penerimaan(tanggal,dokumen_id,jumlah,no_ba,seri_awal,seri_akhir,catatan,user_id,status) VALUES(?,?,?,?,?,?,?,?,?)')
           ->execute([$tanggal, $dokumenId, $jumlah, $noBa, $seriAwal ?: null, $seriAkhir ?: null, "Impor dari Excel (sheet \"$sheet\")", $_SESSION['u']['id'], 'Terverifikasi']);

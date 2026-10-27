@@ -211,3 +211,20 @@ function seri_blok_riwayat(PDO $pdo, int $dokId): array {
   }
   return $hasil;
 }
+
+/* Cek apakah rentang seri penerimaan baru bertabrakan dengan penerimaan yang sudah tercatat (dokumen sama).
+   Hasil: teks pesan kalau bertabrakan, null kalau aman. */
+function seri_terima_tabrakan(PDO $pdo, int $dokId, string $awal, string $akhir): ?string {
+  $a = seri_pecah($awal); $z = seri_pecah($akhir);
+  if (!$a || !$z || strcasecmp(trim($a['prefix']), trim($z['prefix'])) !== 0) return null;
+  $na = (int)$a['num']; $nz = (int)$z['num'];
+  $q = $pdo->prepare('SELECT no_ba, tanggal, seri_awal, seri_akhir FROM penerimaan WHERE dokumen_id=? AND seri_awal IS NOT NULL AND seri_akhir IS NOT NULL');
+  $q->execute([$dokId]);
+  foreach ($q->fetchAll() as $r) {
+    $p = seri_pecah((string)$r['seri_awal']); $k = seri_pecah((string)$r['seri_akhir']);
+    if (!$p || !$k || strcasecmp(trim($p['prefix']), trim($a['prefix'])) !== 0) continue;
+    if ((int)$p['num'] <= $nz && (int)$k['num'] >= $na)
+      return 'Nomor seri ' . $awal . ' – ' . $akhir . ' bertabrakan dengan penerimaan No. BA ' . $r['no_ba'] . ' (' . $r['tanggal'] . ', seri ' . $r['seri_awal'] . ' – ' . $r['seri_akhir'] . ').';
+  }
+  return null;
+}
