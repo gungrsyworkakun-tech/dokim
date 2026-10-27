@@ -1,4 +1,5 @@
-<?php require 'config.php'; login_required(); $title = 'Penerimaan';
+<?php require 'config.php';
+require_once __DIR__ . '/lib/seri_cek.php'; login_required(); $title = 'Penerimaan';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
@@ -60,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!valid_date($f['tanggal']) || $f['tanggal'] > date('Y-m-d')) $err[] = 'Tanggal tidak valid atau masih di masa depan.';
   if ($f['no_ba'] === '' || mb_strlen($f['no_ba']) > 60) $err[] = 'No. BA wajib diisi (maks. 60 karakter).';
   if ($f['seri_awal'] === '' || $f['seri_akhir'] === '' || mb_strlen($f['seri_awal']) > 30 || mb_strlen($f['seri_akhir']) > 30) $err[] = 'Nomor seri awal dan akhir wajib diisi (maks. 30 karakter).';
+  elseif ($f['jumlah'] >= 1 && ($e = seri_cek($f['seri_awal'], $f['seri_akhir'], $f['jumlah']))) $err[] = $e;
   if (mb_strlen($f['catatan']) > 1000) $err[] = 'Catatan maks. 1.000 karakter.';
 
   if (!$err) {
@@ -190,7 +192,7 @@ include 'partials/header.php'; ?>
             <?= e($r['no_ba']) ?> <a class="ba-upload" href="berkas_ba.php?tipe=penerimaan&id=<?= $r['id'] ?>" title="Unggah berkas BA">unggah</a>
           <?php endif; ?>
         </td>
-        <td class="mono nowrap"><?= e($r['seri_awal']) ?> – <?= e($r['seri_akhir']) ?></td>
+        <td class="mono nowrap"><?= e($r['seri_awal']) ?> – <?= e($r['seri_akhir']) ?><?php if ($cekSeri = seri_cek((string)$r['seri_awal'], (string)$r['seri_akhir'], (int)$r['jumlah'])): ?> <span class="st st-kritis" title="<?= e($cekSeri) ?>">seri tidak sesuai</span><?php endif; ?></td>
         <td><?= e($r['petugas'] ?? '-') ?></td>
         <td><span class="st <?= $pend ? 'st-pending' : 'st-ok' ?>"><?= $pend ? 'Menunggu verifikasi' : 'Terverifikasi' ?></span></td>
         <td class="nowrap"><a class="btn sm ghost" href="penerimaan_barcode.php?id=<?= $r['id'] ?>"><?= $r['barcode_token'] ? 'Lihat' : 'Buat' ?></a></td>

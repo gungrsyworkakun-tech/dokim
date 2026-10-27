@@ -1,4 +1,5 @@
-<?php require 'config.php'; login_required(); $title = 'Pengeluaran';
+<?php require 'config.php';
+require_once __DIR__ . '/lib/seri_cek.php'; login_required(); $title = 'Pengeluaran';
 
 // Daftar tujuan dikelola di halaman Pengaturan. Kalau tabelnya belum ada
 // (migrasi_tujuan_pengeluaran.sql belum dijalankan), pakai daftar bawaan.
@@ -42,6 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (!in_array($f['tujuan'], $TUJUAN, true)) $err[] = 'Pilih tujuan pengeluaran.';
   if ($f['no_ba'] === '' || mb_strlen($f['no_ba']) > 60) $err[] = 'No. BA wajib diisi (maks. 60 karakter).';
   if ($f['seri_awal'] === '' || $f['seri_akhir'] === '' || mb_strlen($f['seri_awal']) > 30 || mb_strlen($f['seri_akhir']) > 30) $err[] = 'Nomor seri awal dan akhir wajib diisi (maks. 30 karakter).';
+  elseif ($f['jumlah'] >= 1 && ($e = seri_cek($f['seri_awal'], $f['seri_akhir'], $f['jumlah']))) $err[] = $e;
 
   $dariPenerimaanId = null;
   if (($_POST['dari_token'] ?? '') !== '') {
@@ -180,7 +182,7 @@ include 'partials/header.php'; ?>
             <?= e($r['no_ba']) ?> <a class="ba-upload" href="berkas_ba.php?tipe=pengeluaran&id=<?= $r['id'] ?>" title="Unggah berkas BA">unggah</a>
           <?php endif; ?>
         </td>
-        <td class="mono nowrap"><?= e($r['seri_awal']) ?> – <?= e($r['seri_akhir']) ?></td>
+        <td class="mono nowrap"><?= e($r['seri_awal']) ?> – <?= e($r['seri_akhir']) ?><?php if ($cekSeri = seri_cek((string)$r['seri_awal'], (string)$r['seri_akhir'], (int)$r['jumlah'])): ?> <span class="st st-kritis" title="<?= e($cekSeri) ?>">seri tidak sesuai</span><?php endif; ?></td>
         <td><?= e($r['petugas'] ?? '-') ?></td>
         <?php if (is_super()): ?><td class="r"><form method="post" class="inline" data-confirm="Hapus pengeluaran <?= e($r['no_ba']) ?>? <?= num($r['jumlah']) ?> keping <?= e($r['nama']) ?> akan dikembalikan ke stok."><?= csrf_field() ?><input type="hidden" name="act" value="del"><input type="hidden" name="id" value="<?= $r['id'] ?>"><input type="hidden" name="ret" value="<?= e($qs) ?>"><button class="btn sm danger">Hapus</button></form></td><?php endif; ?>
       </tr>

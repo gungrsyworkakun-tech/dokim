@@ -3,11 +3,12 @@ if (!empty($_SESSION['u'])) back(safe_next((string)($_GET['next'] ?? '')) ?: 'in
 
 /* ---------- Keamanan: header + CSP (nonce) ---------- */
 $nonce = base64_encode(random_bytes(16));
-header("Content-Security-Policy: default-src 'self'; style-src 'nonce-$nonce' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-$nonce'; img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+header("Content-Security-Policy: default-src 'self'; style-src 'nonce-$nonce' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'nonce-$nonce'; img-src 'self' data:; connect-src 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'" . (is_https() ? '; upgrade-insecure-requests' : ''));
 
 /* ---------- Rate limit (anti brute-force) ---------- */
 const MAX_USER = 5;     // gagal per IP+username
 const MAX_IP   = 15;    // gagal per IP
+const MAX_USER_SEMUA_IP = 30;   // gagal per username dari IP mana pun (menahan serangan tebak-password yang gonta-ganti IP)
 const WINDOW   = 900;   // 15 menit
 if (!function_exists('login_attempts_table_ready')) {
   function login_attempts_table_ready(PDO $pdo): void {
@@ -20,7 +21,7 @@ if (!function_exists('login_attempts_table_ready')) {
   }
 }
 login_attempts_table_ready($pdo);
-$ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+$ip = client_ip();   // di balik proxy/ngrok tetap IP pengunjung asli, bukan IP proxy (kalau tidak, satu orang salah password bisa mengunci semua orang)
 
 if (!function_exists('lock_wait')) {
 function lock_wait(PDO $pdo, string $ip, string $user): array {   // [detik tunggu, sisa percobaan] — 1 query gabungan (sebelumnya 2 query terpisah)
@@ -36,6 +37,12 @@ function lock_wait(PDO $pdo, string $ip, string $user): array {   // [detik tung
   $wait = 0;
   if ($cntUser >= MAX_USER) $wait = max($wait, WINDOW - (int)$r['age_user']);
   if ((int)$r['cnt_ip'] >= MAX_IP) $wait = max($wait, WINDOW - (int)$r['age_ip']);
+  if ($user !== '') {
+    $g = $pdo->prepare("SELECT COUNT(*) c, TIMESTAMPDIFF(SECOND, MIN(waktu), NOW()) age FROM login_attempts WHERE username = ? AND waktu > NOW() - INTERVAL " . WINDOW . " SECOND");
+    $g->execute([$user]);
+    $gr = $g->fetch();
+    if ((int)($gr['c'] ?? 0) >= MAX_USER_SEMUA_IP) $wait = max($wait, WINDOW - (int)$gr['age']);
+  }
   return [$wait, $left];
 }
 }
@@ -44,17 +51,21 @@ $err = ''; $wait = 0;
 $next = safe_next((string)($_POST['next'] ?? $_GET['next'] ?? ''));
 if (isset($_GET['exp'])) $err = 'Sesi Anda berakhir karena tidak ada aktivitas. Silakan masuk kembali.';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-  $user = strtolower(substr(trim((string)($_POST['username'] ?? '')), 0, 40));
-  $pass = substr((string)($_POST['password'] ?? ''), 0, 200);
+  // Nilai selain teks biasa (mis. username[]=x) dianggap kosong, supaya tidak memicu perilaku aneh di PHP.
+  $user = strtolower(substr(trim(is_string($_POST['username'] ?? null) ? $_POST['username'] : ''), 0, 40));
+  $pass = substr(is_string($_POST['password'] ?? null) ? $_POST['password'] : '', 0, 200);
+  $userValid = (bool)preg_match('/^[a-z0-9._-]{1,40}$/', $user);   // format username sama dengan aturan saat pengguna dibuat
+  $userLog = $userValid ? $user : '?';
   [$wait] = lock_wait($pdo, $ip, $user);
   if (!hash_equals($_SESSION['csrf'] ?? '', (string)($_POST['csrf'] ?? ''))) {
     $err = 'Formulir kedaluwarsa. Muat ulang halaman lalu coba lagi.';
   } elseif ($wait > 0) {
     $err = '';   // ditampilkan sebagai kotak terkunci
   } else {
-    $s = $pdo->prepare('SELECT * FROM users WHERE username=?'); $s->execute([$user]); $u = $s->fetch();
-    $dummy = '$2y$10$iEG2ivPxYN6khz5rmrrm8OhRqkJPe5te7N/Gc.fu6VsIqrTRElZci';   // samakan waktu proses bila user tidak ada
-    $ok = password_verify($pass, $u['password'] ?? $dummy) && $u;
+    $u = false;
+    if ($userValid) { $s = $pdo->prepare('SELECT * FROM users WHERE username=?'); $s->execute([$user]); $u = $s->fetch(); }
+    if ($u) $ok = password_verify($pass, $u['password']);
+    else { password_hash($pass, PASSWORD_DEFAULT); $ok = false; }   // user tidak ada: tetap habiskan waktu hash yang sama, supaya tidak bisa menebak username dari kecepatan respons
     if ($ok) {
       if (password_needs_rehash($u['password'], PASSWORD_DEFAULT)) $pdo->prepare('UPDATE users SET password=? WHERE id=?')->execute([password_hash($pass, PASSWORD_DEFAULT), $u['id']]);
       $pdo->prepare('DELETE FROM login_attempts WHERE ip=? AND username=?')->execute([$ip, $user]);
@@ -64,8 +75,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       back($next ?: 'index.php');
     }
     $pdo->prepare('INSERT INTO login_attempts(ip,username) VALUES(?,?)')->execute([$ip, $user]);
+    error_log("SIMDOKIM login gagal user=$userLog ip=$ip");   // jejak untuk admin server (atau fail2ban); password tidak pernah dicatat
     usleep(random_int(250000, 500000));
     [$wait, $left] = lock_wait($pdo, $ip, $user);
+    if ($wait > 0) error_log("SIMDOKIM login dikunci user=$userLog ip=$ip");
     $err = $wait > 0 ? '' : "Username atau password salah. Sisa percobaan: $left.";
   }
 }
@@ -142,7 +155,7 @@ input:focus{outline:none;border-color:var(--navy-2);box-shadow:0 0 0 3px rgba(42
   <input type="hidden" name="csrf" value="<?= e($csrf) ?>">
   <?php if ($next): ?><input type="hidden" name="next" value="<?= e($next) ?>"><?php endif; ?>
   <div class="fld"><label for="u">Username</label>
-    <input id="u" name="username" maxlength="40" value="<?= e($_POST['username'] ?? '') ?>" required autofocus autocomplete="username" autocapitalize="none" spellcheck="false"></div>
+    <input id="u" name="username" maxlength="40" value="<?= e(is_string($_POST['username'] ?? null) ? substr($_POST['username'], 0, 40) : '') ?>" required autofocus autocomplete="username" autocapitalize="none" spellcheck="false"></div>
   <div class="fld"><label for="p">Password</label><div class="wrap">
     <input id="p" type="password" name="password" maxlength="200" required autocomplete="current-password">
     <button type="button" class="eye" id="t" aria-controls="p">Tampilkan</button></div>

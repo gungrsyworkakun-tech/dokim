@@ -16,7 +16,7 @@ define('DB_PASS', getenv('DB_PASS') ?: 'dede');
 define('SESSION_IDLE', 1800);                 // sesi habis setelah 30 menit tidak aktif
 define('APP_TZ', 'Asia/Jakarta');
 define('APP_KOTA', getenv('APP_KOTA') ?: 'Jakarta');   // dipakai di tanda tangan laporan
-define('APP_VER', '4.6');
+define('APP_VER', '4.8');
 define('STOK_KRITIS', 100);                   // stok <= ini dianggap kritis
 define('STOK_RENDAH', 200);                   // stok <= ini dianggap rendah
 define('HARI_RATA', 90);                      // jendela hitung rata-rata pemakaian harian
@@ -52,8 +52,48 @@ date_default_timezone_set(APP_TZ);
 /* ============================================================
  * 2. SESI & HEADER KEAMANAN
  * ============================================================ */
+/* ---------- Pengaman dasar PHP: jangan bocorkan pesan error ke pengunjung, cukup catat di log server ---------- */
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+ini_set('session.use_trans_sid', '0');
+if (function_exists('header_remove')) @header_remove('X-Powered-By');
+
+/** Alamat dianggap "pribadi" (jaringan Docker/localhost/LAN) = kemungkinan itu reverse proxy kita sendiri, bukan pengunjung. */
+if (!function_exists('ip_pribadi')) {
+function ip_pribadi(string $ip): bool {
+  return filter_var($ip, FILTER_VALIDATE_IP) !== false
+      && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+}
+}
+
+/**
+ * IP pengunjung yang sebenarnya. Header X-Forwarded-For hanya dipercaya kalau koneksi datang dari proxy
+ * di jaringan pribadi (Docker/ngrok/nginx di server yang sama), dan yang dipakai adalah alamat publik
+ * PALING KANAN (yang ditambahkan proxy kita), bukan yang paling kiri (bisa dipalsukan pengunjung).
+ */
+if (!function_exists('client_ip')) {
+function client_ip(): string {
+  $remote = (string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+  if (!ip_pribadi($remote)) return $remote;
+  $xff = (string)($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
+  if ($xff === '') return $remote;
+  foreach (array_reverse(array_map('trim', explode(',', $xff))) as $cand) {
+    if (filter_var($cand, FILTER_VALIDATE_IP) && !ip_pribadi($cand)) return $cand;
+  }
+  return $remote;
+}
+}
+
+/** Apakah pengunjung memakai HTTPS (langsung, atau lewat proxy tepercaya seperti ngrok/nginx). */
+if (!function_exists('is_https')) {
+function is_https(): bool {
+  if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') return true;
+  return ip_pribadi((string)($_SERVER['REMOTE_ADDR'] ?? '')) && strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+}
+}
+
 if (session_status() !== PHP_SESSION_ACTIVE) {
-  $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+  $https = is_https();
 
   ini_set('session.use_strict_mode', 1);
   ini_set('session.use_only_cookies', 1);
@@ -74,6 +114,12 @@ if (!headers_sent()) {
   header('Referrer-Policy: same-origin');
   header('Permissions-Policy: camera=(self), microphone=(), geolocation=()');   // kamera dipakai halaman scan barcode (hanya dari situs ini sendiri)
   header('Cache-Control: no-store');
+  // CSP dasar yang aman untuk semua halaman: larang plugin, larang <base> asing, larang form kirim ke situs lain, larang di-iframe.
+  // (login.php memasang CSP yang lebih ketat sendiri.)
+  header("Content-Security-Policy: object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
+  header('Cross-Origin-Opener-Policy: same-origin');
+  header('X-Permitted-Cross-Domain-Policies: none');
+  if (is_https()) header('Strict-Transport-Security: max-age=15552000');   // browser wajib HTTPS ke situs ini selama 180 hari
 }
 
 /* ============================================================

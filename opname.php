@@ -1,9 +1,17 @@
 <?php require 'config.php'; login_required(); $title = 'Opname fisik';
 $rows = $pdo->query('SELECT * FROM dokumen ORDER BY kode_resmi IS NULL, kode_resmi, kode')->fetchAll();
-$nilai = 0; $rusak = 0;
-foreach ($rows as $r) { $nilai += $r['stok'] * $r['harga']; $rusak += $r['rusak']; }
 $tgl = valid_date($_GET['tgl'] ?? '') ? $_GET['tgl'] : date('Y-m-d');
 $bln_lampiran = substr($tgl, 0, 7);
+/* Stok sistem diambil dari kartu stok harian pada tanggal yang dipilih (bukan stok hari ini),
+   supaya opname untuk tanggal lampau tetap cocok dengan Excel. Jenis tanpa kartu memakai stok terkini. */
+$kartuTgl = []; $stk = $pdo->prepare('SELECT stok FROM kartu_stok_harian WHERE dokumen_id=? AND tanggal<=? ORDER BY tanggal DESC LIMIT 1');
+$rsk = $pdo->prepare('SELECT COALESCE(SUM(rusak),0) FROM kartu_stok_harian WHERE dokumen_id=? AND tanggal<=?');
+foreach ($rows as &$rw) {
+  $stk->execute([$rw['id'], $tgl]); $v = $stk->fetchColumn();
+  if ($v !== false) { $rw['stok'] = (int)$v; $rsk->execute([$rw['id'], $tgl]); $rw['rusak'] = (int)$rsk->fetchColumn(); $kartuTgl[$rw['id']] = true; }
+} unset($rw);
+$nilai = 0; $rusak = 0;
+foreach ($rows as $r) { $nilai += $r['stok'] * $r['harga']; $rusak += $r['rusak']; }
 include 'partials/header.php'; ?>
 
 <section class="panel noprint">
