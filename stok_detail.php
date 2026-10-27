@@ -1,4 +1,4 @@
-<?php require 'config.php'; login_required();
+<?php require 'config.php'; require_once __DIR__ . '/lib/seri_stok.php'; login_required();
 $id = (int)($_GET['id'] ?? 0);
 $s = $pdo->prepare('SELECT * FROM dokumen WHERE id=?'); $s->execute([$id]); $d = $s->fetch();
 if (!$d) { flash('Dokumen tidak ditemukan.', 'err'); back('stok.php'); }
@@ -25,6 +25,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $title = $d['nama'];
+$blokAktif = seri_stok_baca($d['seri_aktif']) ?: [];  $blokSimpan = seri_stok_baca($d['seri_simpan']) ?: [];
+$jmlAktif = seri_stok_jumlah($blokAktif);             $jmlSimpan = seri_stok_jumlah($blokSimpan);
+$riwayat = seri_blok_riwayat($pdo, $id);
+$seriCocok = ($blokAktif || $blokSimpan) ? ($jmlAktif + $jmlSimpan === (int)$d['stok']) : null;   // null = seri belum diisi
 $rata  = pemakaian($pdo)[$id] ?? 0;
 $st    = status_stok($d['stok'], $rata);
 
@@ -72,8 +76,13 @@ include 'partials/header.php'; ?>
     <div><dt>Harga satuan</dt><dd><?= rp($d['harga']) ?></dd></div>
     <div><dt>Nilai persediaan</dt><dd><?= rp($d['stok'] * $d['harga']) ?></dd></div>
     <div><dt>Rata-rata keluar per hari</dt><dd><?= $rata ? number_format($rata, 1, ',', '.') : '—' ?> <small><?= HARI_RATA ?> hari terakhir</small></dd></div>
-    <div><dt>Seri aktif</dt><dd><?= e($d['seri_aktif']) ?></dd></div>
-    <div><dt>Seri tersimpan</dt><dd><?= e($d['seri_simpan']) ?></dd></div>
+    <div><dt>Stok aktif <small>(dikeluarkan lebih dulu)</small></dt><dd class="mono">
+      <?php foreach ($blokAktif as $bk): ?><div><?= e(str_replace(' - ', ' – ', seri_stok_tulis([$bk]))) ?> <small>· <?= num($bk['z'] - $bk['a'] + 1) ?> <?= strtolower(e($d['satuan'])) ?></small></div><?php endforeach; ?>
+      <?php if (!$blokAktif): ?><span class="muted">Kosong</span><?php endif; ?></dd></div>
+    <div><dt>Stok tersimpan <small>(dipakai setelah aktif habis)</small></dt><dd class="mono">
+      <?php foreach ($blokSimpan as $bk): ?><div><?= e(str_replace(' - ', ' – ', seri_stok_tulis([$bk]))) ?> <small>· <?= num($bk['z'] - $bk['a'] + 1) ?> <?= strtolower(e($d['satuan'])) ?></small></div><?php endforeach; ?>
+      <?php if (!$blokSimpan): ?><span class="muted">Kosong</span><small class="muted"> — belum ada blok cadangan. Catat penerimaan baru (dengan nomor seri) untuk mengisinya.</small><?php endif; ?></dd></div>
+    <?php if ($seriCocok === false): ?><div class="full"><span class="st st-kritis" title="Jumlah seri aktif + tersimpan harus sama dengan stok sistem">Seri tidak sama dengan stok: seri <?= num($jmlAktif + $jmlSimpan) ?> ≠ stok <?= num($d['stok']) ?>. Periksa lewat "Ubah data dokumen".</span></div><?php endif; ?>
     <div><dt>Terbit</dt><dd><?= num($d['terbit']) ?></dd></div>
     <div><dt>Rusak</dt><dd><?= num($d['rusak']) ?></dd></div>
   </dl>
@@ -94,6 +103,32 @@ include 'partials/header.php'; ?>
   </details>
   <?php endif; ?>
 </section>
+
+<?php if ($riwayat || $blokAktif || $blokSimpan): ?>
+<section class="panel">
+  <div class="panel-h"><div><h2>Riwayat blok nomor seri</h2>
+    <p>Stok awal tahun dan tiap penerimaan, beserta berapa yang sudah keluar. Pemakaian dihitung dari rentang seri di data pengeluaran.</p></div></div>
+  <?php if (!$blokAktif && $blokSimpan): ?><p class="warn-box" style="margin:0 16px 12px">Stok aktif sudah habis. Stok tersimpan masih ada (<?= num($jmlSimpan) ?> <?= strtolower(e($d['satuan'])) ?>); pilih "Pakai stok tersimpan" saat mencatat pengeluaran.</p><?php endif; ?>
+  <?php if (!$blokAktif && !$blokSimpan && $riwayat): ?><p class="warn-box" style="margin:0 16px 12px">Stok aktif dan stok tersimpan sudah habis (menurut nomor seri).</p><?php endif; ?>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Asal</th><th>Tanggal</th><th>Nomor seri</th><th class="num">Jumlah</th><th class="num">Terpakai</th><th class="num">Sisa</th><th>Status</th></tr></thead>
+    <tbody>
+    <?php foreach ($riwayat as $b): ?>
+      <tr>
+        <td><?= e($b['asal']) ?></td>
+        <td class="nowrap"><?= tgl($b['tanggal']) ?></td>
+        <td class="mono nowrap"><?= e($b['awal']) ?> – <?= e($b['akhir']) ?></td>
+        <td class="num"><?= num($b['jumlah']) ?></td>
+        <td class="num"><?= $b['terpakai'] ? '−' . num($b['terpakai']) : '–' ?></td>
+        <td class="num"><b><?= num($b['sisa']) ?></b></td>
+        <td><span class="st <?= $b['status'] === 'Habis' ? 'st-kritis' : ($b['status'] === 'Utuh' ? 'st-ok' : 'st-pending') ?>"><?= e($b['status']) ?></span></td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if (!$riwayat): ?><tr class="empty-row"><td colspan="7"><div class="empty"><b>Belum ada riwayat blok seri</b>Jalankan tambah_seri_blok.sql atau catat penerimaan dengan nomor seri.</div></td></tr><?php endif; ?>
+    </tbody>
+  </table></div>
+</section>
+<?php endif; ?>
 
 <section class="panel">
   <div class="panel-h">

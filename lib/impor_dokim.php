@@ -126,6 +126,7 @@ function impor_ekstrak_penerimaan(array $rows): array {
 
     $jumlah = sel($rows, $r, $colJumlah);
     if ($jumlah === null || (float)$jumlah <= 0) continue;
+    if (!is_numeric(sel($rows, $r, 4))) continue;   // baris tanpa tanggal = baris rekap/total di bawah tabel, bukan transaksi
 
     if ($bulanAktif === null) { $peringatan[] = "Baris $r: ada Jumlah penerimaan (" . (int)$jumlah . ") tapi bulannya tidak diketahui — dilewati."; continue; }
 
@@ -146,5 +147,102 @@ function impor_ekstrak_penerimaan(array $rows): array {
     ];
   }
 
+  return ['ok' => true, 'pesan' => null, 'baris' => $hasil, 'peringatan' => $peringatan];
+}
+
+
+/** Ambil nilai nomor seri dari satu sel + sel di sebelah kanannya: huruf awalan ("X", "E", "V5B") ada di salah satu, angkanya di yang lain. */
+function impor_seri_sel(array $rows, int $r, int $c, bool $ambilAkhir): ?string {
+  $awalan = ''; $angka = null;
+  foreach ([$c, $c + 1] as $cc) {
+    $v = sel($rows, $r, $cc);
+    if ($v === null || $v === '') continue;
+    if (is_numeric($v) && (float)$v > 0) { $angka = (string)(int)$v; continue; }
+    $t = trim((string)$v);
+    if (preg_match('/^[A-Za-z][A-Za-z0-9]*$/', $t)) { $awalan = $t; continue; }
+    // beberapa angka dalam satu sel (dipisah baris baru): awal = yang pertama, akhir = yang terakhir
+    $bagian = preg_split('/\s+/', $t, -1, PREG_SPLIT_NO_EMPTY);
+    $pilih = $ambilAkhir ? end($bagian) : ($bagian[0] ?? '');
+    if ($pilih !== '' && $pilih !== false && ctype_digit($pilih) && (int)$pilih > 0) $angka = $pilih;
+  }
+  return $angka === null ? null : $awalan . $angka;
+}
+
+/**
+ * Seperti impor_ekstrak_penerimaan(), tapi untuk grup kolom "Pengeluaran":
+ * ambil semua baris yang Jumlah pengeluarannya > 0 beserta tujuan, No. BA, dan rentang nomor seri.
+ * Hasil: ['ok'=>bool, 'pesan'=>?string, 'baris'=>array, 'peringatan'=>array]
+ */
+function impor_ekstrak_pengeluaran(array $rows): array {
+  $peringatan = [];
+  $gagal = fn(string $p) => ['ok' => false, 'pesan' => $p, 'baris' => [], 'peringatan' => []];
+
+  $rNo = null;
+  for ($r = 1; $r <= 12; $r++) {
+    if (impor_normalisasi((string)sel($rows, $r, 2)) === 'no'
+        && impor_normalisasi((string)sel($rows, $r, 3)) === 'bulan'
+        && impor_normalisasi((string)sel($rows, $r, 4)) === 'tgl') { $rNo = $r; break; }
+  }
+  if ($rNo === null) return $gagal('Baris header "No / Bulan / Tgl" tidak ditemukan di 12 baris pertama.');
+
+  $pos = impor_cari_label($rows, $rNo, $rNo, 6, 60, 'pengeluaran');
+  if (!$pos) return $gagal('Kolom grup "Pengeluaran" tidak ditemukan.');
+  $cAwalGrup = $pos[1];
+
+  // grup Pengeluaran berakhir sebelum label berikutnya di baris header (mis. "Terbit" / "Rusak")
+  $cAkhirGrup = $cAwalGrup + 12;
+  for ($c = $cAwalGrup + 1; $c <= $cAwalGrup + 12; $c++) {
+    if (sel($rows, $rNo, $c) !== null) { $cAkhirGrup = $c - 1; break; }
+  }
+
+  $pJumlah = impor_cari_label($rows, $rNo + 1, $rNo + 4, $cAwalGrup, $cAkhirGrup, 'jumlah');
+  $pNoBa   = impor_cari_label($rows, $rNo + 1, $rNo + 4, $cAwalGrup, $cAkhirGrup, 'noba');
+  $pTujuan = impor_cari_label($rows, $rNo + 1, $rNo + 4, $cAwalGrup, $cAkhirGrup, 'tujuan');
+  $pSeri   = impor_cari_label($rows, $rNo + 1, $rNo + 4, $cAwalGrup, $cAkhirGrup, 'noseri');
+  if (!$pJumlah) return $gagal('Sub-kolom "Jumlah" tidak ditemukan di grup Pengeluaran.');
+  $cJumlah = $pJumlah[1];
+  $cNoBa = $pNoBa ? $pNoBa[1] : null;
+  $cTujuan = $pTujuan ? $pTujuan[1] : null;
+  $cAwalSeri = $cAkhirSeri = null;
+  if ($pSeri) {
+    $a = impor_cari_label($rows, $pSeri[0], $pSeri[0] + 2, $pSeri[1], $cAkhirGrup, 'awal');
+    $z = impor_cari_label($rows, $pSeri[0], $pSeri[0] + 2, $pSeri[1], $cAkhirGrup, 'akhir');
+    if ($a) $cAwalSeri = $a[1];
+    if ($z) $cAkhirSeri = $z[1];
+  }
+  if (!$cNoBa) $peringatan[] = 'Pengeluaran: kolom No. BA tidak ditemukan — No. BA akan diisi otomatis (ARSIP-...).';
+  if (!$cAwalSeri || !$cAkhirSeri) $peringatan[] = 'Pengeluaran: kolom rentang nomor seri tidak ditemukan — nomor seri dikosongkan.';
+
+  $rMaks = impor_baris_maks($rows);
+  $dataMulai = null;
+  for ($r = $rNo + 1; $r <= min($rNo + 8, $rMaks); $r++) {
+    if (is_numeric(sel($rows, $r, 4))) { $dataMulai = $r; break; }
+  }
+  if ($dataMulai === null) return $gagal('Baris data pertama (kolom Tgl berisi angka) tidak ditemukan.');
+
+  $hasil = []; $bulanAktif = null;
+  for ($r = $dataMulai; $r <= $rMaks; $r++) {
+    $c2 = sel($rows, $r, 2);
+    if ($c2 !== null && impor_normalisasi((string)$c2) === 'total') { $bulanAktif = null; continue; }
+    $bulanTeks = sel($rows, $r, 3);
+    if ($bulanTeks !== null) { $key = impor_normalisasi((string)$bulanTeks); if (isset(IMPOR_BULAN[$key])) $bulanAktif = IMPOR_BULAN[$key]; }
+
+    $jumlah = sel($rows, $r, $cJumlah);
+    if ($jumlah === null || !is_numeric($jumlah) || (float)$jumlah <= 0) continue;
+    if (!is_numeric(sel($rows, $r, 4))) continue;   // baris tanpa tanggal = baris rekap/total di bawah tabel, bukan transaksi
+    if ($bulanAktif === null) { $peringatan[] = "Pengeluaran baris $r: bulan tidak diketahui — dilewati."; continue; }
+
+    $noBa = $cNoBa ? trim((string)(sel($rows, $r, $cNoBa) ?? '')) : '';
+    if ($noBa === '-') $noBa = '';
+    $noBa = trim(preg_replace('/[ \t]+(?=\R|$)/', '', $noBa));
+    $tujuan = $cTujuan ? trim((string)(sel($rows, $r, $cTujuan) ?? '')) : '';
+    $awal  = $cAwalSeri  ? impor_seri_sel($rows, $r, $cAwalSeri, false) : null;
+    $akhir = $cAkhirSeri ? impor_seri_sel($rows, $r, $cAkhirSeri, true) : null;
+
+    $hasil[] = [
+      'baris_excel' => $r, 'bulan' => $bulanAktif, 'tgl' => (int)sel($rows, $r, 4), 'jumlah' => (int)$jumlah,
+      'no_ba' => $noBa, 'tujuan' => $tujuan, 'seri_awal' => $awal, 'seri_akhir' => $akhir,
+    ];
+  }
   return ['ok' => true, 'pesan' => null, 'baris' => $hasil, 'peringatan' => $peringatan];
 }

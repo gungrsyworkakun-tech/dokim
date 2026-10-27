@@ -35,7 +35,7 @@ $tahunDefault = (string)end($tahunTersedia);
 if (preg_match('/^(\d{4})-(0[1-9]|1[0-2]|ALL)$/', $_GET['bln'] ?? '', $m)) {
   $tahun = $m[1]; $bulanSel = $m[2];
 } else {
-  $tahun = $tahunDefault; $bulanSel = '10';
+  $tahun = $tahunDefault; $bulanSel = 'ALL';
 }
 if (!in_array((int)$tahun, $tahunTersedia)) $tahun = $tahunDefault;
 $bln = "$tahun-$bulanSel";
@@ -55,14 +55,37 @@ $q = $pdo->prepare('SELECT * FROM kartu_stok_harian WHERE dokumen_id=? AND tangg
 $q->execute([$id, $awalRentang, $akhirRentang]);
 $rows = $q->fetchAll();
 
+/* No. seri dari tabel pengeluaran/penerimaan pada tanggal yang sama */
+$seriKel = []; $seriTer = [];
+$sq = $pdo->prepare('SELECT tanggal, seri_awal, seri_akhir FROM pengeluaran WHERE dokumen_id=? AND tanggal BETWEEN ? AND ? AND seri_awal IS NOT NULL ORDER BY id');
+$sq->execute([$id, $awalRentang, $akhirRentang]);
+foreach ($sq as $x) $seriKel[$x['tanggal']][] = $x['seri_awal'] . ($x['seri_akhir'] && $x['seri_akhir'] !== $x['seri_awal'] ? ' – ' . $x['seri_akhir'] : '');
+$sq = $pdo->prepare('SELECT tanggal, seri_awal, seri_akhir FROM penerimaan WHERE dokumen_id=? AND tanggal BETWEEN ? AND ? AND seri_awal IS NOT NULL ORDER BY id');
+$sq->execute([$id, $awalRentang, $akhirRentang]);
+foreach ($sq as $x) $seriTer[$x['tanggal']][] = $x['seri_awal'] . ($x['seri_akhir'] && $x['seri_akhir'] !== $x['seri_awal'] ? ' – ' . $x['seri_akhir'] : '');
+
+/* Rekap per bulan untuk tahun terpilih + peta stok per tanggal (untuk opname cepat) */
+$qt = $pdo->prepare('SELECT * FROM kartu_stok_harian WHERE dokumen_id=? AND YEAR(tanggal)=? ORDER BY tanggal');
+$qt->execute([$id, $tahun]); $barisTahun = $qt->fetchAll();
+$perBulan = []; $petaStok = []; $rusakKum = 0;
+foreach ($barisTahun as $r) {
+  $m = (int)substr($r['tanggal'], 5, 2);
+  if (!isset($perBulan[$m])) $perBulan[$m] = ['pen' => 0, 'kel' => 0, 'kanim' => 0, 'ulp' => 0, 'rusak' => 0, 'catpro' => 0, 'akhir' => 0];
+  $perBulan[$m]['pen'] += (int)$r['penerimaan_jumlah']; $perBulan[$m]['kel'] += (int)$r['pengeluaran_jumlah'];
+  $perBulan[$m]['kanim'] += (int)$r['terbit_kanim']; $perBulan[$m]['ulp'] += (int)$r['terbit_ulp']; $perBulan[$m]['rusak'] += (int)$r['rusak']; $perBulan[$m]['catpro'] += (int)$r['catpro'];
+  $perBulan[$m]['akhir'] = (int)$r['stok'];
+  $rusakKum += (int)$r['rusak'];
+  $petaStok[$r['tanggal']] = [(int)$r['stok'], $rusakKum];
+}
+
 if (($_GET['act'] ?? '') === 'unduh_csv') {
   header('Content-Type: text/csv; charset=UTF-8');
   header('Content-Disposition: attachment; filename="kartu-stok-' . $d['kode'] . '-' . $bln . '.csv"');
   $out = fopen('php://output', 'w');
   fputs($out, "\xEF\xBB\xBF"); // BOM biar angka/teks tampil benar di Excel
-  fputcsv($out, ['Tanggal','Stok','Penerimaan','No. BA Terima','Pengeluaran','Tujuan','No. BA Keluar','Terbit Kanim','Terbit ULP','Rusak','Catpro','Nilai']);
+  fputcsv($out, ['Tanggal','Stok','Penerimaan','No. BA Terima','Pengeluaran','Tujuan','No. BA Keluar','Terbit Kanim','Terbit ULP','Rusak','Catpro','Nilai','No. Seri Keluar','No. Seri Terima']);
   foreach ($rows as $r) {
-    fputcsv($out, [$r['tanggal'], $r['stok'], $r['penerimaan_jumlah'], $r['penerimaan_no_ba'], $r['pengeluaran_jumlah'], $r['pengeluaran_tujuan'], $r['pengeluaran_no_ba'], $r['terbit_kanim'], $r['terbit_ulp'], $r['rusak'], $r['catpro'], $r['total_harga']]);
+    fputcsv($out, [$r['tanggal'], $r['stok'], $r['penerimaan_jumlah'], $r['penerimaan_no_ba'], $r['pengeluaran_jumlah'], $r['pengeluaran_tujuan'], $r['pengeluaran_no_ba'], $r['terbit_kanim'], $r['terbit_ulp'], $r['rusak'], $r['catpro'], $r['total_harga'], implode(' | ', $seriKel[$r['tanggal']] ?? []), implode(' | ', $seriTer[$r['tanggal']] ?? [])]);
   }
   fclose($out);
   exit;
@@ -145,21 +168,25 @@ include 'partials/header.php'; ?>
   </div>
   <?php if ($semuaBulan): ?><p class="muted noprint">Menampilkan seluruh tahun <?= $tahun ?> (<?= count($rows) ?> baris) — cocok untuk dicetak atau diunduh sebagai satu laporan utuh. Mode edit tidak tersedia di tampilan "Semua bulan"; pilih bulan tertentu dulu untuk mengoreksi angka.</p><?php endif; ?>
   <?php if ($editMode): ?><p class="muted noprint">Mode edit aktif — ubah angka Terbit Kanim, Terbit ULP, Rusak, dan/atau Catpro pada baris yang perlu dikoreksi, lalu klik <b>Simpan perubahan</b> di bawah tabel. Baris lain yang tidak diubah tetap aman.</p><?php endif; ?>
+  <div class="toolbar noprint">
+    <label class="check"><input type="checkbox" id="ks-hanya"> Hanya hari yang ada transaksi atau terbit</label>
+    <a class="btn sm ghost" href="mutasi.php?tahun=<?= (int)$tahun ?>">Mutasi semua dokumen</a>
+  </div>
   <form method="post" <?= $editMode ? '' : 'class="noedit"' ?>>
     <?= csrf_field() ?>
     <input type="hidden" name="act" value="simpan_ledger">
     <input type="hidden" name="id" value="<?= $id ?>">
     <input type="hidden" name="bln" value="<?= e($bln) ?>">
     <div class="tbl-wrap"><table class="ledger">
-      <thead><tr><th>Tanggal</th><th class="num">Stok</th><th class="num">Terima</th><th>No. BA terima</th><th class="num">Keluar</th><th>Tujuan</th><th>No. BA keluar</th><th class="num">Terbit Kanim</th><th class="num">Terbit ULP</th><th class="num">Rusak</th><th class="num">Catpro</th><th class="num">Nilai</th></tr></thead>
+      <thead><tr><th>Tanggal</th><th class="num">Stok</th><th class="num">Terima</th><th>No. BA terima</th><th class="num">Keluar</th><th>Tujuan</th><th>No. BA keluar</th><th>No. seri</th><th class="num">Terbit Kanim</th><th class="num">Terbit ULP</th><th class="num">Rusak</th><th class="num">Catpro</th><th class="num">Nilai</th></tr></thead>
       <tbody>
       <?php if (!$rows): ?>
-        <tr class="empty-row"><td colspan="12"><div class="empty"><b>Belum ada data kartu stok</b>Tidak ditemukan riwayat harian untuk dokumen dan periode ini.</div></td></tr>
+        <tr class="empty-row"><td colspan="13"><div class="empty"><b>Belum ada data kartu stok</b>Tidak ditemukan riwayat harian untuk dokumen dan periode ini.</div></td></tr>
       <?php endif; ?>
       <?php foreach ($rows as $r):
         $w = (int)date('w', strtotime($r['tanggal']));
-        $mut = $r['penerimaan_jumlah'] || $r['pengeluaran_jumlah']; ?>
-        <tr class="<?= $mut ? '' : 'idle' ?><?= $w === 0 || $w === 6 ? ' wkend' : '' ?>">
+        $mut = $r['penerimaan_jumlah'] || $r['pengeluaran_jumlah']; $aktif = $mut || $r['terbit_kanim'] || $r['terbit_ulp'] || $r['rusak']; ?>
+        <tr data-aktif="<?= $aktif ? 1 : 0 ?>" class="<?= $mut ? '' : 'idle' ?><?= $w === 0 || $w === 6 ? ' wkend' : '' ?>">
           <td class="day"><?= $semuaBulan ? date('j M', strtotime($r['tanggal'])) : (int)date('j', strtotime($r['tanggal'])) ?><?php if (!$semuaBulan): ?><small><?= substr(NAMA_HARI[$w], 0, 3) ?></small><?php endif; ?></td>
           <td class="num"><?= num($r['stok']) ?></td>
           <td class="num <?= $r['penerimaan_jumlah'] ? 'in' : '' ?>"><?= $r['penerimaan_jumlah'] ? '+' . num($r['penerimaan_jumlah']) : '–' ?></td>
@@ -167,6 +194,7 @@ include 'partials/header.php'; ?>
           <td class="num <?= $r['pengeluaran_jumlah'] ? 'out' : '' ?>"><?= $r['pengeluaran_jumlah'] ? '−' . num($r['pengeluaran_jumlah']) : '–' ?></td>
           <td class="small"><?= e($r['pengeluaran_tujuan'] ?? '') ?></td>
           <td class="mono small"><?= e($r['pengeluaran_no_ba'] ?? '') ?></td>
+          <td class="mono small"><?php foreach (($seriKel[$r['tanggal']] ?? []) as $sk): ?><div>keluar: <?= e($sk) ?></div><?php endforeach; foreach (($seriTer[$r['tanggal']] ?? []) as $st): ?><div>terima: <?= e($st) ?></div><?php endforeach; ?></td>
           <?php if ($editMode): ?>
             <td class="num"><input type="number" min="0" step="1" class="ledger-input" name="kanim[<?= $r['id'] ?>]" value="<?= (int)$r['terbit_kanim'] ?>"></td>
             <td class="num"><input type="number" min="0" step="1" class="ledger-input" name="ulp[<?= $r['id'] ?>]" value="<?= (int)$r['terbit_ulp'] ?>"></td>
@@ -189,7 +217,53 @@ include 'partials/header.php'; ?>
   </form>
 </section>
 
+<section class="panel noprint">
+  <div class="panel-h"><div><h2>Rekap per bulan — <?= e($d['nama']) ?> <?= (int)$tahun ?></h2><p>Terima, keluar, terbit Kanim/ULP, rusak, dan stok akhir tiap bulan. Klik nama bulan untuk melihat rinciannya.</p></div></div>
+  <div class="tbl-wrap"><table class="ledger">
+    <thead><tr><th>Bulan</th><th class="num">Terima</th><th class="num">Keluar</th><th class="num">Terbit Kanim</th><th class="num">Terbit ULP</th><th class="num">Rusak</th><th class="num">Catpro</th><th class="num">Stok akhir</th></tr></thead>
+    <tbody>
+    <?php foreach ($perBulan as $mi => $pb): ?>
+      <tr><td><a href="?id=<?= $id ?>&amp;bln=<?= (int)$tahun ?>-<?= sprintf('%02d', $mi) ?>"><?= e(NAMA_BULAN[$mi - 1]) ?></a></td>
+        <td class="num"><?= $pb['pen'] ? '+' . num($pb['pen']) : '–' ?></td><td class="num"><?= $pb['kel'] ? '−' . num($pb['kel']) : '–' ?></td>
+        <td class="num"><?= $pb['kanim'] ? num($pb['kanim']) : '–' ?></td><td class="num"><?= $pb['ulp'] ? num($pb['ulp']) : '–' ?></td>
+        <td class="num"><?= $pb['rusak'] ? num($pb['rusak']) : '–' ?></td><td class="num"><?= $pb['catpro'] ? num($pb['catpro']) : '–' ?></td><td class="num"><b><?= num($pb['akhir']) ?></b></td></tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel noprint">
+  <div class="panel-h"><div><h2>Opname cepat</h2><p>Pilih tanggal, ketik jumlah hasil hitung fisik, selisihnya langsung terlihat. Untuk semua dokumen sekaligus dan berita acara, pakai halaman <a href="opname.php">Opname fisik</a>.</p></div></div>
+  <div class="panel-b"><div class="grid-form">
+    <div><label for="oc-tgl">Tanggal</label><input id="oc-tgl" type="date" min="<?= (int)$tahun ?>-01-01" max="<?= (int)$tahun ?>-12-31" value="<?= e(min(date('Y-m-d'), (int)$tahun . '-12-31')) ?>"></div>
+    <div><label>Stok sistem</label><div class="mono" id="oc-sis" style="padding:8px 0;font-size:1.2em">–</div></div>
+    <div><label for="oc-fis">Stok fisik</label><input id="oc-fis" type="number" min="0" inputmode="numeric"></div>
+    <div><label>Selisih</label><div class="mono" id="oc-sel" style="padding:8px 0;font-size:1.2em">–</div></div>
+    <div><label>Rusak (sampai tanggal itu)</label><div class="mono" id="oc-rus" style="padding:8px 0">–</div></div>
+    <div><label>&nbsp;</label><a class="btn sm" id="oc-lnk" href="opname.php">Buka lembar opname</a></div>
+  </div></div>
+</section>
+
 <script>
+const KS_STOK = <?= json_encode($petaStok) ?>;
+(function () {
+  const t = document.getElementById('oc-tgl'), f = document.getElementById('oc-fis');
+  function hitung() {
+    let d = t.value, v = KS_STOK[d];
+    if (!v && d) { const ks = Object.keys(KS_STOK).filter(k => k <= d).sort(); if (ks.length) v = KS_STOK[ks[ks.length - 1]]; }
+    document.getElementById('oc-sis').textContent = v ? v[0].toLocaleString('id-ID') : '–';
+    document.getElementById('oc-rus').textContent = v ? v[1].toLocaleString('id-ID') : '–';
+    const sel = document.getElementById('oc-sel');
+    if (v && f.value !== '') { const s = (+f.value) - v[0]; sel.textContent = (s > 0 ? '+' : '') + s.toLocaleString('id-ID'); sel.style.color = s === 0 ? '' : '#b42318'; }
+    else { sel.textContent = '–'; sel.style.color = ''; }
+    document.getElementById('oc-lnk').href = 'opname.php?tgl=' + encodeURIComponent(d);
+  }
+  t.addEventListener('input', hitung); f.addEventListener('input', hitung); hitung();
+  const h = document.getElementById('ks-hanya');
+  h.addEventListener('change', function () {
+    document.querySelectorAll('table.ledger tbody tr[data-aktif]').forEach(tr => { tr.hidden = h.checked && tr.dataset.aktif === '0'; });
+  });
+})();
 function kartuStokPilihPeriode(form) {
   const b = document.getElementById('ks-bulan').value;
   const t = document.getElementById('ks-tahun').value;

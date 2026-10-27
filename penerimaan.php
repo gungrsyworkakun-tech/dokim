@@ -1,5 +1,5 @@
 <?php require 'config.php';
-require_once __DIR__ . '/lib/seri_cek.php'; login_required(); $title = 'Penerimaan';
+require_once __DIR__ . '/lib/seri_cek.php'; require_once __DIR__ . '/lib/seri_stok.php'; login_required(); $title = 'Penerimaan';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($act === 'del') {
     super_required();
     $pdo->beginTransaction();
-    $s = $pdo->prepare('SELECT p.id, p.jumlah, p.dokumen_id, p.no_ba, d.stok FROM penerimaan p JOIN dokumen d ON d.id=p.dokumen_id WHERE p.id=? FOR UPDATE');
+    $s = $pdo->prepare('SELECT p.id, p.jumlah, p.dokumen_id, p.no_ba, p.seri_awal, p.seri_akhir, d.stok FROM penerimaan p JOIN dokumen d ON d.id=p.dokumen_id WHERE p.id=? FOR UPDATE');
     $s->execute([(int)($_POST['id'] ?? 0)]);
     $r = $s->fetch();
     if (!$r) { $pdo->rollBack(); flash('Data penerimaan tidak ditemukan.', 'err'); }
@@ -40,8 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
       $pdo->prepare('UPDATE dokumen SET stok=stok-? WHERE id=?')->execute([$r['jumlah'], $r['dokumen_id']]);
       $pdo->prepare('DELETE FROM penerimaan WHERE id=?')->execute([$r['id']]);
+      $seriCabut = seri_stok_cabut($pdo, (int)$r['dokumen_id'], $r['seri_awal'], $r['seri_akhir']);   // nomor seri ikut dicabut dari stok
       $pdo->commit();
-      flash('Penerimaan ' . $r['no_ba'] . ' dihapus dan stok dikurangi ' . num($r['jumlah']) . '.');
+      flash('Penerimaan ' . $r['no_ba'] . ' dihapus dan stok dikurangi ' . num($r['jumlah']) . '.' . ($seriCabut ? ' Nomor seri ikut dikeluarkan dari stok.' : ' Nomor seri stok tidak berubah otomatis, cek di halaman detail dokumen.'));
     }
     back($ret);
   }
@@ -77,8 +78,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $pdo->prepare('INSERT INTO penerimaan(tanggal,dokumen_id,jumlah,no_ba,seri_awal,seri_akhir,catatan,user_id,status) VALUES(?,?,?,?,?,?,?,?,?)')
           ->execute([$f['tanggal'], $f['dokumen_id'], $f['jumlah'], $f['no_ba'], $f['seri_awal'], $f['seri_akhir'], $f['catatan'] ?: null, $_SESSION['u']['id'], is_super() ? 'Terverifikasi' : 'Pending']);
       $pdo->prepare('UPDATE dokumen SET stok=stok+? WHERE id=?')->execute([$f['jumlah'], $f['dokumen_id']]);
+      $seriOk = seri_stok_masuk($pdo, (int)$f['dokumen_id'], $f['seri_awal'], $f['seri_akhir']);   // masuk ke stok tersimpan
       $pdo->commit();
-      flash('Penerimaan ' . num($f['jumlah']) . ' keping tersimpan' . (is_super() ? '.' : ' dan menunggu verifikasi superadmin.'));
+      flash('Penerimaan ' . num($f['jumlah']) . ' keping tersimpan' . (is_super() ? '.' : ' dan menunggu verifikasi superadmin.') . ($seriOk ? ' Nomor seri masuk ke stok tersimpan.' : ' Nomor seri stok tidak berubah otomatis (cek di halaman detail dokumen).'));
       back('penerimaan.php');
     }
   }

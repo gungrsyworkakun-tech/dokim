@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   back('stok.php');
 }
 
-$rows = $pdo->query('SELECT d.*, (SELECT COUNT(*) FROM penerimaan WHERE dokumen_id=d.id) + (SELECT COUNT(*) FROM pengeluaran WHERE dokumen_id=d.id) trx FROM dokumen d ORDER BY d.nama')->fetchAll();
+$rows = $pdo->query('SELECT d.*, (SELECT COUNT(*) FROM penerimaan WHERE dokumen_id=d.id) + (SELECT COUNT(*) FROM pengeluaran WHERE dokumen_id=d.id) trx, (SELECT COALESCE(SUM(terbit_kanim),0) FROM kartu_stok_harian WHERE dokumen_id=d.id) tb_kanim, (SELECT COALESCE(SUM(terbit_ulp),0) FROM kartu_stok_harian WHERE dokumen_id=d.id) tb_ulp FROM dokumen d ORDER BY d.nama')->fetchAll();
 $rata = pemakaian($pdo);
 $hit  = ['aman' => 0, 'rendah' => 0, 'kritis' => 0, 'habis' => 0];
 $nilai = 0;
@@ -52,8 +52,8 @@ foreach ($rows as &$r) {
 if (isset($_GET['export'])) {
   super_required();
   csv_out('stok-dokumen-' . date('Ymd') . '.csv',
-    ['Kode', 'Jenis Dokumen', 'Satuan', 'Stok', 'Status', 'Perkiraan Habis (hari)', 'Seri Aktif', 'Seri Tersimpan', 'Terbit', 'Rusak', 'Harga', 'Total Nilai'],
-    array_map(fn($r) => [$r['kode'], $r['nama'], $r['satuan'], $r['stok'], $r['st'][0], $r['st'][2] ?? '', $r['seri_aktif'], $r['seri_simpan'], $r['terbit'], $r['rusak'], $r['harga'], $r['stok'] * $r['harga']], $rows));
+    ['Kode', 'Jenis Dokumen', 'Satuan', 'Stok', 'Status', 'Perkiraan Habis (hari)', 'Seri Aktif', 'Seri Tersimpan', 'Terbit', 'Terbit Kanim', 'Terbit ULP', 'Rusak', 'Harga', 'Total Nilai'],
+    array_map(fn($r) => [$r['kode'], $r['nama'], $r['satuan'], $r['stok'], $r['st'][0], $r['st'][2] ?? '', $r['seri_aktif'], $r['seri_simpan'], $r['terbit'], $r['tb_kanim'], $r['tb_ulp'], $r['rusak'], $r['harga'], $r['stok'] * $r['harga']], $rows));
 }
 include 'partials/header.php'; ?>
 
@@ -77,7 +77,7 @@ include 'partials/header.php'; ?>
   <div class="panel-h">
     <div><h2>Stok gudang dan persediaan</h2>
       <p><span data-count="#tbl-stok"><?= count($rows) ?></span> dari <?= count($rows) ?> jenis ditampilkan. Nilai persediaan total <?= rp($nilai) ?>. Klik judul kolom untuk mengurutkan.</p></div>
-    <?php if (is_super()): ?><a class="btn sm ghost" href="?export=1">Unduh CSV (Excel)</a><?php endif; ?>
+    <div class="actions"><a class="btn sm" href="mutasi.php">Mutasi seluruh tahun</a><a class="btn sm ghost" href="opname.php">Opname</a><?php if (is_super()): ?><a class="btn sm ghost" href="?export=1">Unduh CSV (Excel)</a><?php endif; ?></div>
   </div>
   <div class="toolbar">
     <div class="grow"><label for="cari">Saring</label><input id="cari" type="search" data-filter="#tbl-stok" placeholder="Nama, kode, atau nomor seri"></div>
@@ -94,7 +94,7 @@ include 'partials/header.php'; ?>
     <thead><tr>
       <th data-sort>Kode</th><th data-sort>Dokumen</th><th data-sort="num" class="num">Stok</th><th data-sort>Status</th>
       <th data-sort="num">Perkiraan habis</th><th>Seri aktif / tersimpan</th>
-      <th data-sort="num" class="num">Terbit</th><th data-sort="num" class="num">Rusak</th><th data-sort="num" class="num">Harga</th><th data-sort="num" class="num">Nilai</th>
+      <th data-sort="num" class="num">Terbit</th><th data-sort="num" class="num">Kanim</th><th data-sort="num" class="num">ULP</th><th data-sort="num" class="num">Rusak</th><th data-sort="num" class="num">Harga</th><th data-sort="num" class="num">Nilai</th>
       <?php if (is_super()): ?><th></th><?php endif; ?>
     </tr></thead>
     <tbody>
@@ -107,6 +107,8 @@ include 'partials/header.php'; ?>
         <td class="nowrap" data-v="<?= $r['st'][2] ?? 999999 ?>"><?= hari_txt($r['st'][2]) ?></td>
         <td class="mono nowrap"><?= e($r['seri_aktif']) ?><div class="sub"><?= e($r['seri_simpan']) ?></div></td>
         <td class="num"><?= num($r['terbit']) ?></td>
+        <td class="num"><?= num($r['tb_kanim']) ?></td>
+        <td class="num"><?= num($r['tb_ulp']) ?></td>
         <td class="num"><?= num($r['rusak']) ?></td>
         <td class="num"><?= rp($r['harga']) ?></td>
         <td class="num"><?= rp($r['stok'] * $r['harga']) ?></td>
@@ -120,7 +122,7 @@ include 'partials/header.php'; ?>
         </td><?php endif; ?>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr class="empty-row"><td colspan="11"><div class="empty"><b>Belum ada jenis dokumen</b><?= is_super() ? 'Tambahkan lewat tombol "Tambah jenis dokumen" di atas.' : 'Minta superadmin menambahkan jenis dokumen.' ?></div></td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr class="empty-row"><td colspan="13"><div class="empty"><b>Belum ada jenis dokumen</b><?= is_super() ? 'Tambahkan lewat tombol "Tambah jenis dokumen" di atas.' : 'Minta superadmin menambahkan jenis dokumen.' ?></div></td></tr><?php endif; ?>
     </tbody>
   </table></div>
 </section>

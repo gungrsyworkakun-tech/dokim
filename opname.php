@@ -1,6 +1,22 @@
 <?php require 'config.php'; login_required(); $title = 'Opname fisik';
 $rows = $pdo->query('SELECT * FROM dokumen ORDER BY kode_resmi IS NULL, kode_resmi, kode')->fetchAll();
-$tgl = valid_date($_GET['tgl'] ?? '') ? $_GET['tgl'] : date('Y-m-d');
+/* Opname biasanya dilakukan akhir bulan atau akhir tahun: pilih Bulan + Tahun, tanggalnya otomatis hari terakhir bulan itu
+   (kalau bulannya belum selesai, dipakai hari ini). Tanggal tertentu tetap bisa dipilih manual. */
+$hariIni = date('Y-m-d');
+$thnList = $pdo->query('SELECT DISTINCT YEAR(tanggal) FROM kartu_stok_harian ORDER BY 1')->fetchAll(PDO::FETCH_COLUMN);
+if (!in_array((int)date('Y'), array_map('intval', $thnList), true)) $thnList[] = (int)date('Y');
+sort($thnList);
+$selBln = preg_match('/^(0[1-9]|1[0-2])$/', $_GET['bulan'] ?? '') ? $_GET['bulan'] : null;
+$selThn = in_array((int)($_GET['tahun'] ?? 0), array_map('intval', $thnList), true) ? (int)$_GET['tahun'] : null;
+if (valid_date($_GET['tgl'] ?? '')) {
+  $tgl = $_GET['tgl'];
+} elseif ($selBln && $selThn) {
+  $tgl = min(date('Y-m-t', strtotime("$selThn-$selBln-01")), $hariIni);
+} else {
+  $tgl = $hariIni;
+}
+$selBln = substr($tgl, 5, 2); $selThn = (int)substr($tgl, 0, 4);
+$akhirBulan = ($tgl === date('Y-m-t', strtotime($tgl)));
 $bln_lampiran = substr($tgl, 0, 7);
 /* Stok sistem diambil dari kartu stok harian pada tanggal yang dipilih (bukan stok hari ini),
    supaya opname untuk tanggal lampau tetap cocok dengan Excel. Jenis tanpa kartu memakai stok terkini. */
@@ -17,9 +33,20 @@ include 'partials/header.php'; ?>
 <section class="panel noprint">
   <div class="panel-h">
     <div><h2>Lembar kerja opname</h2>
-      <p>Ketik hasil hitung gudang di kolom <b>Stok fisik</b>; selisih terhadap sistem dihitung langsung. Tekan Enter untuk pindah ke baris berikutnya. Isian tersimpan sementara di browser ini, jadi tidak hilang bila halaman tertutup.</p></div>
+      <p>Posisi stok sistem: <b><?= tgl_narasi($tgl) ?></b><?= $akhirBulan ? ' (akhir bulan)' : '' ?>. Ketik hasil hitung gudang di kolom <b>Stok fisik</b>; selisih terhadap sistem dihitung langsung. Tekan Enter untuk pindah ke baris berikutnya. Isian tersimpan sementara di browser ini, jadi tidak hilang bila halaman tertutup.</p></div>
     <div class="actions">
-      <form method="get" class="inline"><label class="check" for="op-tgl">Tanggal</label><input id="op-tgl" type="date" name="tgl" value="<?= e($tgl) ?>" max="<?= date('Y-m-d') ?>" onchange="this.form.submit()"></form>
+      <form method="get" class="inline">
+        <label class="check" for="op-bln">Bulan</label>
+        <select id="op-bln" name="bulan" onchange="this.form.submit()">
+          <?php foreach (NAMA_BULAN as $i => $nm): $mm = sprintf('%02d', $i + 1); ?><option value="<?= $mm ?>" <?= $selBln === $mm ? 'selected' : '' ?>><?= $nm ?></option><?php endforeach; ?>
+        </select>
+        <label class="check" for="op-thn">Tahun</label>
+        <select id="op-thn" name="tahun" onchange="this.form.submit()">
+          <?php foreach ($thnList as $ty): ?><option value="<?= (int)$ty ?>" <?= (int)$ty === $selThn ? 'selected' : '' ?>><?= (int)$ty ?></option><?php endforeach; ?>
+        </select>
+      </form>
+      <a class="btn sm ghost" href="?bulan=12&amp;tahun=<?= $selThn ?>" title="Opname akhir tahun (31 Desember)">Akhir tahun</a>
+      <form method="get" class="inline"><label class="check" for="op-tgl">atau tanggal</label><input id="op-tgl" type="date" name="tgl" value="<?= e($tgl) ?>" max="<?= $hariIni ?>" onchange="this.form.submit()"></form>
       <button type="button" class="btn sm ghost" id="op-isi" title="Isi baris yang masih kosong dengan angka stok sistem">Isi yang kosong sesuai sistem</button>
       <button type="button" class="btn sm ghost" id="op-reset">Kosongkan</button>
       <button type="button" class="btn sm" onclick="print()">Cetak berita acara</button>

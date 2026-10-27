@@ -1,4 +1,4 @@
-<?php require 'config.php';
+<?php require 'config.php'; require_once __DIR__ . '/lib/seri_stok.php';
 require_once __DIR__ . '/lib/seri_cek.php'; login_required(); $title = 'Pengeluaran';
 
 // Daftar tujuan dikelola di halaman Pengaturan. Kalau tabelnya belum ada
@@ -16,12 +16,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($act === 'del') {
     super_required();
     $pdo->beginTransaction();
-    $s = $pdo->prepare('SELECT id, jumlah, dokumen_id, no_ba FROM pengeluaran WHERE id=? FOR UPDATE'); $s->execute([(int)($_POST['id'] ?? 0)]);
+    $s = $pdo->prepare('SELECT id, jumlah, dokumen_id, no_ba, seri_awal, seri_akhir FROM pengeluaran WHERE id=? FOR UPDATE'); $s->execute([(int)($_POST['id'] ?? 0)]);
     if ($r = $s->fetch()) {
       $pdo->prepare('UPDATE dokumen SET stok=stok+? WHERE id=?')->execute([$r['jumlah'], $r['dokumen_id']]);
       $pdo->prepare('DELETE FROM pengeluaran WHERE id=?')->execute([$r['id']]);
+      $seriBalik = seri_stok_kembali($pdo, (int)$r['dokumen_id'], $r['seri_awal'], $r['seri_akhir']);   // nomor seri kembali ke stok aktif
       $pdo->commit();
-      flash('Pengeluaran ' . $r['no_ba'] . ' dihapus dan ' . num($r['jumlah']) . ' keping dikembalikan ke stok.');
+      flash('Pengeluaran ' . $r['no_ba'] . ' dihapus dan ' . num($r['jumlah']) . ' keping dikembalikan ke stok.' . ($seriBalik ? ' Nomor seri kembali ke stok aktif.' : ' Nomor seri stok tidak berubah otomatis, cek di halaman detail dokumen.'));
     } else { $pdo->rollBack(); flash('Data pengeluaran tidak ditemukan.', 'err'); }
     back($ret);
   }
@@ -37,6 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     'seri_akhir' => trim((string)($_POST['seri_akhir'] ?? '')),
     'dari_token' => trim((string)($_POST['dari_token'] ?? '')),
   ];
+  $pakaiSimpan = !empty($_POST['pakai_simpan']);
   $err = [];
   if ($f['jumlah'] < 1) $err[] = 'Jumlah minimal 1.';
   if (!valid_date($f['tanggal']) || $f['tanggal'] > date('Y-m-d')) $err[] = 'Tanggal tidak valid atau masih di masa depan.';
@@ -60,14 +62,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $s = $pdo->prepare('SELECT 1 FROM pengeluaran WHERE no_ba=? AND dokumen_id=?'); $s->execute([$f['no_ba'], $f['dokumen_id']]);
       if ($s->fetch()) $err[] = 'No. BA ' . $f['no_ba'] . ' sudah pernah dicatat untuk dokumen ini.';
     }
+    if (!$err && $f['seri_awal'] !== '' && $f['seri_akhir'] !== '') {      // seri dari stok tersimpan (gudang) harus dipilih sadar oleh petugas
+      $ps = seri_stok_posisi($pdo, (int)$f['dokumen_id'], $f['seri_awal'], $f['seri_akhir']);
+      if ($ps['posisi'] === 'simpan' && !$pakaiSimpan)
+        $err[] = 'Seri ' . $f['seri_awal'] . ' – ' . $f['seri_akhir'] . ' ada di STOK TERSIMPAN (gudang), bukan stok aktif.' . (!empty($ps['aktif_kosong']) ? ' Stok aktif sudah habis.' : ' Stok aktif masih ada.') . ' Centang "Pakai stok tersimpan" kalau memang ingin memakainya.';
+    }
     if ($err) $pdo->rollBack();
     else {
       $pdo->prepare('INSERT INTO pengeluaran(tanggal,dokumen_id,dari_penerimaan_id,jumlah,tujuan,seri_awal,seri_akhir,no_ba,user_id) VALUES(?,?,?,?,?,?,?,?,?)')
           ->execute([$f['tanggal'], $f['dokumen_id'], $dariPenerimaanId, $f['jumlah'], $f['tujuan'], $f['seri_awal'], $f['seri_akhir'], $f['no_ba'], $_SESSION['u']['id']]);
       $pdo->prepare('UPDATE dokumen SET stok=stok-? WHERE id=?')->execute([$f['jumlah'], $f['dokumen_id']]);
+      $hs = seri_stok_keluar($pdo, (int)$f['dokumen_id'], $f['seri_awal'], $f['seri_akhir'], $pakaiSimpan);   // otomatis berkurang dari stok aktif / tersimpan
       $pdo->commit();
+      $catatSeri = '';
+      if ($hs['ok']) {
+        if ($hs['posisi'] === 'simpan') $catatSeri .= ' Memakai stok tersimpan.';
+        if ($hs['aktif_habis']) $catatSeri .= $hs['simpan_jumlah'] > 0
+          ? ' STOK AKTIF HABIS. Stok tersimpan tersedia: ' . $hs['simpan_teks'] . ' (' . num($hs['simpan_jumlah']) . '). Pilih "Pakai stok tersimpan" pada pengeluaran berikutnya.'
+          : ' STOK AKTIF DAN STOK TERSIMPAN SUDAH HABIS.';
+        elseif ($hs['simpan_habis']) $catatSeri .= ' STOK TERSIMPAN SUDAH HABIS.';
+      } else $catatSeri = ' Nomor seri ini tidak tercatat di stok aktif maupun tersimpan, cek di halaman detail dokumen.';
       $sisa = $dk['stok'] - $f['jumlah'];
-      flash('Pengeluaran ' . num($f['jumlah']) . ' keping ke ' . $f['tujuan'] . ' tersimpan. Sisa stok ' . $dk['nama'] . ': ' . num($sisa) . '.' . ($sisa <= STOK_KRITIS ? ' Stok sudah kritis, segera ajukan pengadaan.' : ''));
+      flash('Pengeluaran ' . num($f['jumlah']) . ' keping ke ' . $f['tujuan'] . ' tersimpan. Sisa stok ' . $dk['nama'] . ': ' . num($sisa) . '.' . $catatSeri . ($sisa <= STOK_KRITIS ? ' Stok sudah kritis, segera ajukan pengadaan.' : ''));
       back('pengeluaran.php');
     }
   }
@@ -101,7 +117,19 @@ if (isset($_GET['export'])) {
 $s = $pdo->prepare("SELECT COUNT(*) n, COALESCE(SUM(p.jumlah),0) j $from"); $s->execute($p); $sum = $s->fetch();
 $s = $pdo->prepare("SELECT p.*, d.nama, d.kode, u.nama petugas $from ORDER BY p.tanggal DESC, p.id DESC LIMIT 200"); $s->execute($p); $rows = $s->fetchAll();
 
-$dok    = $pdo->query('SELECT id, kode, nama, stok FROM dokumen ORDER BY nama')->fetchAll();
+$dok    = $pdo->query('SELECT id, kode, nama, stok, seri_aktif, seri_simpan FROM dokumen ORDER BY nama')->fetchAll();
+/* data stok aktif & tersimpan untuk form: seri awal otomatis dari stok aktif, notif kalau seri ada di stok tersimpan */
+$aktifJs = [];
+foreach ($dok as $d) {
+  $ba = seri_stok_baca($d['seri_aktif']) ?: []; $bs = seri_stok_baca($d['seri_simpan']) ?: [];
+  $aktifJs[$d['id']] = [
+    'awal' => $ba ? $ba[0]['p'] . str_pad((string)$ba[0]['a'], $ba[0]['w'], '0', STR_PAD_LEFT) : '',
+    'teks' => $d['seri_aktif'], 'sisa' => seri_stok_jumlah($ba),
+    'simpan_awal' => $bs ? $bs[0]['p'] . str_pad((string)$bs[0]['a'], $bs[0]['w'], '0', STR_PAD_LEFT) : '',
+    'simpan_teks' => $d['seri_simpan'], 'simpan_sisa' => seri_stok_jumlah($bs),
+    'simpan' => array_map(fn($b) => [$b['p'], $b['a'], $b['z']], $bs),
+  ];
+}
 $lastBa = $pdo->query('SELECT no_ba FROM pengeluaran ORDER BY id DESC LIMIT 1')->fetchColumn();
 $adaFilter = $fl['q'] !== '' || $fl['dok'] || $fl['dari'] || $fl['sampai'] || $fl['tujuan'];
 $qs = cur_qs();
@@ -131,6 +159,10 @@ include 'partials/header.php'; ?>
         <?php foreach ($TUJUAN as $t): ?><option<?= ($old['tujuan'] ?? '') === $t ? ' selected' : '' ?>><?= $t ?></option><?php endforeach; ?></select></div>
       <div class="span2"><label for="f-ba">No. berita acara <span class="req">*</span></label><input id="f-ba" name="no_ba" maxlength="60" class="mono" value="<?= e($old['no_ba'] ?? '') ?>" placeholder="BA/OUT/107/IM/I/2026" required>
         <?php if ($lastBa): ?><div class="hint">BA pengeluaran terakhir: <span class="mono"><?= e($lastBa) ?></span></div><?php endif; ?></div>
+      <div class="full" id="simpan-box" hidden>
+        <p class="warn-box" id="simpan-note" style="margin:0 0 8px"></p>
+        <label class="check"><input type="checkbox" name="pakai_simpan" value="1" id="f-simpan"> Pakai stok tersimpan (gudang)</label>
+      </div>
       <div class="full"><button type="submit" class="btn">Simpan pengeluaran</button></div>
     </div>
     <aside class="form-side">
@@ -145,6 +177,42 @@ include 'partials/header.php'; ?>
       <p class="side-note">Pengeluaran yang salah hanya bisa dihapus superadmin; stoknya akan dikembalikan.</p>
     </aside>
   </form>
+  <script>
+  /* Seri awal otomatis = awal STOK AKTIF; kalau seri yang diketik ada di STOK TERSIMPAN, muncul pemberitahuan + opsi memakainya */
+  (() => {
+    const DATA = <?= json_encode($aktifJs, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    const f = document.querySelector('form[data-trx]'); if (!f) return;
+    const sel = f.elements.dokumen_id, sa = f.elements.seri_awal, sz = f.elements.seri_akhir;
+    const box = document.getElementById('simpan-box'), note = document.getElementById('simpan-note'), cek = document.getElementById('f-simpan');
+    const hint = document.createElement('div'); hint.className = 'hint'; sa.insertAdjacentElement('afterend', hint);
+    const n = v => Number(v).toLocaleString('id-ID');
+    const pecah = s => { const m = /^(.*?)(\d+)$/.exec(String(s || '').trim()); return m ? [m[1], parseInt(m[2], 10)] : null; };
+    const dalamSimpan = d => { const a = pecah(sa.value), z = pecah(sz.value); if (!a || !d) return false;
+      return d.simpan.some(b => b[0].toLowerCase() === a[0].toLowerCase() && a[1] >= b[1] && a[1] <= b[2] && (!z || (z[0].toLowerCase() === a[0].toLowerCase() && z[1] <= b[2]))); };
+    const tampil = () => {
+      const d = DATA[sel.value]; box.hidden = true; note.innerHTML = '';
+      if (!sel.value || !d) { hint.textContent = ''; return; }
+      hint.textContent = d.sisa ? 'Stok aktif: ' + d.teks + ' (' + n(d.sisa) + ')' : 'Stok aktif habis.';
+      if (dalamSimpan(d)) {
+        box.hidden = false; note.textContent = 'Seri ini ada di STOK TERSIMPAN (gudang), bukan stok aktif. Centang "Pakai stok tersimpan" untuk memakainya; stok tersimpan akan berkurang otomatis.';
+      } else if (!d.sisa && d.simpan_sisa) {
+        box.hidden = false; cek.checked = false;
+        note.innerHTML = 'Stok aktif sudah habis. Stok tersimpan tersedia: <b>' + d.simpan_teks + '</b> (' + n(d.simpan_sisa) + '). <button type="button" class="btn sm" id="pakai-simpan-btn">Pakai stok tersimpan</button>';
+        document.getElementById('pakai-simpan-btn').onclick = () => { sa.value = d.simpan_awal; sa.dispatchEvent(new Event('input', { bubbles: true })); sa.dataset.manual = ''; cek.checked = true; tampil(); cek.checked = true; };
+      } else if (!d.sisa && !d.simpan_sisa) {
+        box.hidden = false; note.textContent = 'Stok aktif dan stok tersimpan sudah habis (nomor seri). Cek di halaman detail dokumen.';
+      }
+    };
+    const isi = () => setTimeout(() => {                       // setelah app.js selesai mengisi, timpa dengan awal stok aktif
+      const d = DATA[sel.value]; cek.checked = false;
+      if (d && d.awal) { sa.value = d.awal; sa.dispatchEvent(new Event('input', { bubbles: true })); sa.dataset.manual = ''; }
+      tampil();
+    }, 0);
+    sel.addEventListener('change', isi);
+    [sa, sz].forEach(i => i.addEventListener('input', tampil));
+    window.addEventListener('DOMContentLoaded', () => { if (sel.value && !sa.value) isi(); else tampil(); });
+  })();
+  </script>
 </section>
 
 <section class="panel">
