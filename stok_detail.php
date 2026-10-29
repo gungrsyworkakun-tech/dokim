@@ -17,6 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ($v['nama'] === '' || mb_strlen($v['nama']) > 100 || $v['harga'] < 0 || $v['rusak'] < 0 || $v['terbit'] < 0
       || mb_strlen($v['seri_aktif']) > 60 || mb_strlen($v['seri_simpan']) > 60) {
     flash('Data tidak valid: nama wajib diisi, angka tidak boleh negatif, rentang seri maks. 60 karakter.', 'err');
+  } elseif (($v['seri_aktif'] !== $d['seri_aktif'] || $v['seri_simpan'] !== $d['seri_simpan'])
+            && ($cekSeri = seri_ubah_cek($pdo, $id, $v['seri_aktif'], $v['seri_simpan']))) {
+    flash('Nomor seri tidak disimpan: ' . implode(' ', $cekSeri), 'err');
   } else {
     $pdo->prepare('UPDATE dokumen SET nama=?, harga=?, rusak=?, terbit=?, seri_aktif=?, seri_simpan=? WHERE id=?')->execute([...array_values($v), $id]);
     flash('Data dokumen diperbarui.');
@@ -82,10 +85,10 @@ include 'partials/header.php'; ?>
     <div><dt>Stok tersimpan <small>(dipakai setelah aktif habis)</small></dt><dd class="mono">
       <?php foreach ($blokSimpan as $bk): ?><div><?= e(str_replace(' - ', ' – ', seri_stok_tulis([$bk]))) ?> <small>· <?= num($bk['z'] - $bk['a'] + 1) ?> <?= strtolower(e($d['satuan'])) ?></small></div><?php endforeach; ?>
       <?php if (!$blokSimpan): ?><span class="muted">Kosong</span><small class="muted"> — belum ada blok cadangan. Catat penerimaan baru (dengan nomor seri) untuk mengisinya.</small><?php endif; ?></dd></div>
-    <?php if ($seriCocok === false): ?><div class="full"><span class="st st-kritis" title="Jumlah seri aktif + tersimpan harus sama dengan stok sistem">Seri tidak sama dengan stok: seri <?= num($jmlAktif + $jmlSimpan) ?> ≠ stok <?= num($d['stok']) ?>. Periksa lewat "Ubah data dokumen".</span></div><?php endif; ?>
     <div><dt>Terbit</dt><dd><?= num($d['terbit']) ?></dd></div>
     <div><dt>Rusak</dt><dd><?= num($d['rusak']) ?></dd></div>
   </dl>
+  <?php if ($seriCocok === false): ?><div class="warn-box" style="margin:0;border-radius:0;border-left:0;border-right:0"><b>Nomor seri belum cocok dengan stok.</b> Jumlah seri <?= num($jmlAktif + $jmlSimpan) ?> ≠ stok sistem <?= num($d['stok']) ?> (selisih <?= num(abs($jmlAktif + $jmlSimpan - (int)$d['stok'])) ?>). Perbaiki lewat "Ubah data dokumen" di bawah.</div><?php endif; ?>
   <?php if (is_super()): ?>
   <details class="edit noprint">
     <summary>Ubah data dokumen</summary>

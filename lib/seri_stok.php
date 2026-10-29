@@ -228,3 +228,61 @@ function seri_terima_tabrakan(PDO $pdo, int $dokId, string $awal, string $akhir)
   }
   return null;
 }
+
+/** Apakah ada dua blok yang saling tumpang tindih dalam satu daftar? */
+function seri_stok_tumpang(array $blok): bool {
+  $n = count($blok);
+  for ($i = 0; $i < $n; $i++) for ($j = $i + 1; $j < $n; $j++)
+    if (strcasecmp($blok[$i]['p'], $blok[$j]['p']) === 0 && $blok[$i]['a'] <= $blok[$j]['z'] && $blok[$j]['a'] <= $blok[$i]['z']) return true;
+  return false;
+}
+
+/**
+ * Dipakai saat admin mengubah nomor seri aktif/tersimpan di halaman detail dokumen.
+ * Menolak kalau: format tidak terbaca, ada nomor yang SUDAH DIKELUARKAN (ada di pengeluaran),
+ * nomor yang sama ada di aktif dan tersimpan sekaligus, atau nomor yang sekarang ada di GUDANG (stok tersimpan)
+ * dipindah begitu saja ke stok aktif (harus lewat pengeluaran dengan opsi "Pakai stok tersimpan").
+ * Hasil: daftar pesan kesalahan (kosong = boleh disimpan).
+ */
+function seri_ubah_cek(PDO $pdo, int $dokId, string $teksAktif, string $teksSimpan): array {
+  $err = [];
+  $ak = seri_stok_baca($teksAktif); $sm = seri_stok_baca($teksSimpan);
+  if ($ak === null) $err[] = 'Seri aktif tidak terbaca. Pakai format "X8664751 - X8668500" (beberapa blok dipisah koma).';
+  if ($sm === null) $err[] = 'Seri tersimpan tidak terbaca. Pakai format "X8664751 - X8668500" (beberapa blok dipisah koma).';
+  if ($err) return $err;
+  foreach ([['aktif', $ak], ['tersimpan', $sm]] as [$nm, $bl])
+    foreach ($bl as $b) if ($b['a'] > $b['z']) { $err[] = "Seri $nm: nomor awal lebih besar dari nomor akhir."; break; }
+  if (seri_stok_tumpang($ak)) $err[] = 'Seri aktif: ada dua blok yang saling tumpang tindih.';
+  if (seri_stok_tumpang($sm)) $err[] = 'Seri tersimpan: ada dua blok yang saling tumpang tindih.';
+  foreach ($ak as $b) if (seri_stok_irisan($sm, $b['p'], $b['a'], $b['z']) > 0) { $err[] = 'Ada nomor seri yang sama di stok aktif dan stok tersimpan. Satu nomor hanya boleh di satu tempat.'; break; }
+  if ($err) return $err;
+
+  // 1) nomor yang sudah dikeluarkan tidak boleh ada di stok
+  $q = $pdo->prepare('SELECT tanggal, tujuan, no_ba, seri_awal, seri_akhir FROM pengeluaran WHERE dokumen_id=? AND seri_awal IS NOT NULL AND seri_akhir IS NOT NULL ORDER BY tanggal');
+  $q->execute([$dokId]);
+  foreach ($q->fetchAll() as $r) {
+    $a = seri_pecah((string)$r['seri_awal']); $z = seri_pecah((string)$r['seri_akhir']);
+    if (!$a || !$z || strcasecmp(trim($a['prefix']), trim($z['prefix'])) !== 0) continue;
+    $p = trim($a['prefix']); $na = (int)$a['num']; $nz = (int)$z['num'];
+    foreach ([['aktif', $ak], ['tersimpan', $sm]] as [$nm, $bl]) {
+      $n = seri_stok_irisan($bl, $p, $na, $nz);
+      if ($n > 0) {
+        $err[] = 'Seri ' . $nm . ': ' . number_format($n, 0, ',', '.') . ' nomor dalam rentang ' . $r['seri_awal'] . ' – ' . $r['seri_akhir']
+               . ' SUDAH DIKELUARKAN (' . $r['tanggal'] . ', ' . $r['tujuan'] . ', BA ' . $r['no_ba'] . ') dan tidak bisa dipakai lagi.';
+        if (count($err) >= 4) return $err;
+      }
+    }
+  }
+  // 2) nomor yang sekarang ada di gudang tidak boleh dipindah ke stok aktif lewat edit
+  $s = $pdo->prepare('SELECT seri_aktif, seri_simpan FROM dokumen WHERE id=?'); $s->execute([$dokId]); $d = $s->fetch();
+  if ($d) {
+    $akLama = seri_stok_baca($d['seri_aktif']) ?? []; $smLama = seri_stok_baca($d['seri_simpan']) ?? [];
+    foreach ($ak as $b) {
+      $inSm = seri_stok_irisan($smLama, $b['p'], $b['a'], $b['z']);
+      $inAk = seri_stok_irisan($akLama, $b['p'], $b['a'], $b['z']);
+      $n = $b['z'] - $b['a'] + 1;
+      if ($inSm > 0 && $inAk < $n) { $err[] = 'Seri aktif: ada nomor yang sekarang berada di GUDANG (stok tersimpan). Nomor gudang tidak bisa langsung dijadikan aktif lewat edit — pakai pengeluaran dengan opsi "Pakai stok tersimpan".'; break; }
+    }
+  }
+  return $err;
+}

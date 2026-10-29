@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'import')
   $pilih = array_map('strval', (array)($_POST['pilih'] ?? []));
   $pilihSet = array_flip($pilih);
 
-  $berhasil = 0; $berhasilKeluar = 0; $dilewati = 0; $gagal = [];
+  $berhasil = 0; $berhasilKeluar = 0; $dilewati = 0; $gagal = []; $seriMasuk = 0; $seriKeluar = 0; $seriTakCocok = 0;
   foreach ($kandidat as $k) {
     if (!isset($pilihSet[(string)($k['id'] ?? '')])) continue;
 
@@ -62,6 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'import')
       $pdo->prepare('INSERT INTO penerimaan(tanggal,dokumen_id,jumlah,no_ba,seri_awal,seri_akhir,catatan,user_id,status) VALUES(?,?,?,?,?,?,?,?,?)')
           ->execute([$tanggal, $dokumenId, $jumlah, $noBa, $seriAwal ?: null, $seriAkhir ?: null, "Impor dari Excel (sheet \"$sheet\")", $_SESSION['u']['id'], 'Terverifikasi']);
       $pdo->prepare('UPDATE dokumen SET stok=stok+? WHERE id=?')->execute([$jumlah, $dokumenId]);
+      if ($seriAwal && $seriAkhir && seri_stok_masuk($pdo, (int)$dokumenId, (string)$seriAwal, (string)$seriAkhir)) $seriMasuk++;   // seri masuk ke stok tersimpan (atau aktif kalau aktif kosong)
       $pdo->commit();
       $berhasil++;
     } else {
@@ -73,13 +74,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'import')
       $pdo->prepare('INSERT INTO pengeluaran(tanggal,dokumen_id,dari_penerimaan_id,jumlah,tujuan,seri_awal,seri_akhir,no_ba,user_id) VALUES(?,?,?,?,?,?,?,?,?)')
           ->execute([$tanggal, $dokumenId, null, $jumlah, $tujuan, $seriAwal ?: null, $seriAkhir ?: null, $noBa, $_SESSION['u']['id']]);
       $pdo->prepare('UPDATE dokumen SET stok=stok-? WHERE id=?')->execute([$jumlah, $dokumenId]);
+      if ($seriAwal && $seriAkhir) {   // data Excel adalah kejadian yang sudah terjadi, jadi stok tersimpan boleh dipakai otomatis
+        $hs = seri_stok_keluar($pdo, (int)$dokumenId, (string)$seriAwal, (string)$seriAkhir, true);
+        if (!empty($hs['ok'])) $seriKeluar++; else $seriTakCocok++;
+      }
       $pdo->commit();
       $berhasilKeluar++;
     }
   }
 
   $pesan = "$berhasil penerimaan dan $berhasilKeluar pengeluaran berhasil ditambahkan.";
-  if ($dilewati)      $pesan .= " $dilewati dilewati (ternyata sudah ada di database).";
+  if ($dilewati)      $pesan .= " $dilewati dilewati (ternyata sudah ada di database, atau nomor serinya sama dengan penerimaan lain).";
+  if ($seriMasuk || $seriKeluar) $pesan .= " Nomor seri stok ikut diperbarui ($seriMasuk masuk, $seriKeluar keluar).";
+  if ($seriTakCocok)  $pesan .= " $seriTakCocok pengeluaran nomor serinya tidak ditemukan di stok aktif/tersimpan, jadi daftar seri stok tidak berubah — cek di halaman detail dokumen.";
   if ($gagal)         $pesan .= ' ' . count($gagal) . ' baris gagal: ' . implode(' ', array_slice($gagal, 0, 5)) . (count($gagal) > 5 ? ' …' : '');
   flash($pesan, $gagal ? 'err' : 'ok');
   back('impor_excel.php');

@@ -2,6 +2,13 @@
 $uid = (int)$_SESSION['u']['id'];
 
 const FRASE_RESET = 'HAPUS SEMUA DATA';
+const RESET_BAGIAN = [   // kunci => [nama pendek, penjelasan]
+  'penerimaan' => ['Penerimaan', 'Semua catatan penerimaan barang (beserta foto/barcode-nya).'],
+  'pengeluaran' => ['Pengeluaran', 'Semua catatan pengeluaran barang.'],
+  'kartu' => ['Kartu stok harian', 'Riwayat harian resmi dari Excel (terbit Kanim/ULP, rusak, catpro).'],
+  'stok' => ['Angka stok, terbit, dan rusak', 'Jumlah stok, terbit, dan rusak di tiap jenis dokumen jadi 0.'],
+  'seri' => ['Nomor seri', 'Seri aktif, seri tersimpan, dan riwayat blok seri jadi kosong.'],
+];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   csrf_check();
@@ -12,14 +19,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ((string)($_POST['konfirmasi'] ?? '') !== FRASE_RESET) {
       flash('Ketik persis "' . FRASE_RESET . '" di kolom konfirmasi untuk menghapus data.', 'err');
     } else {
-      $adaKartu = $pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='kartu_stok_harian'")->fetchColumn();
+      // Petugas memilih sendiri bagian mana yang dikosongkan. Daftar jenis dokumen (kode, nama, satuan, harga),
+      // tujuan pengeluaran, setelan, dan akun pengguna TIDAK PERNAH ikut dihapus.
+      $pilihan = array_values(array_intersect((array)($_POST['bagian'] ?? []), array_keys(RESET_BAGIAN)));
+      if (!$pilihan) { flash('Centang dulu bagian mana yang mau dikosongkan.', 'err'); back('akun.php'); }
+      $ada = function (string $tb) use ($pdo): bool {
+        $q = $pdo->prepare('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?'); $q->execute([$tb]);
+        return (bool)$q->fetchColumn();
+      };
+      $kosongkan = function (array $tabel) use ($pdo, $ada) { foreach ($tabel as $tb) if ($ada($tb)) $pdo->exec("TRUNCATE TABLE `$tb`"); };
       $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
-      if ($adaKartu) $pdo->exec('TRUNCATE TABLE kartu_stok_harian');
-      $pdo->exec('TRUNCATE TABLE pengeluaran');
-      $pdo->exec('TRUNCATE TABLE penerimaan');
-      $pdo->exec('TRUNCATE TABLE dokumen');
+      if (in_array('penerimaan', $pilihan, true))  $kosongkan(['penerimaan_foto', 'penerimaan']);
+      if (in_array('pengeluaran', $pilihan, true)) $kosongkan(['pengeluaran']);
+      if (in_array('kartu', $pilihan, true))       $kosongkan(['kartu_stok_harian']);
+      if (in_array('stok', $pilihan, true))        $pdo->exec('UPDATE dokumen SET stok=0, rusak=0, terbit=0');
+      if (in_array('seri', $pilihan, true)) { $kosongkan(['seri_blok']); $pdo->exec("UPDATE dokumen SET seri_aktif='-', seri_simpan='-'"); }
       $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
-      flash('Semua data jenis dokumen, stok, penerimaan, dan pengeluaran sudah dikosongkan. Akun pengguna tidak terpengaruh. Silakan tambahkan jenis dokumen dan data yang asli lewat menu Stok dokumen.');
+      flash('Sudah dikosongkan: ' . implode(', ', array_map(fn($k) => RESET_BAGIAN[$k][0], $pilihan)) . '. Daftar jenis dokumen dan akun pengguna tetap ada.');
     }
     back('akun.php');
   }
@@ -75,11 +91,17 @@ include 'partials/header.php'; ?>
 
 <?php if (is_super()): ?>
 <section class="panel danger-zone">
-  <div class="panel-h"><div><h2>Zona berbahaya</h2><p>Mengosongkan seluruh data jenis dokumen, stok, penerimaan, dan pengeluaran, supaya Anda bisa mulai menambahkan data yang asli dari nol. Akun pengguna (login) tidak ikut terhapus. <b>Tindakan ini tidak bisa dibatalkan.</b></p></div></div>
-  <form method="post" class="panel-b grid-form" data-confirm="Hapus SEMUA data jenis dokumen, stok, penerimaan, dan pengeluaran? Tindakan ini tidak bisa dibatalkan.">
+  <div class="panel-h"><div><h2>Zona berbahaya</h2><p>Mengosongkan bagian data yang kamu pilih supaya bisa mulai mencatat dari nol. <b>Daftar jenis dokumen</b> (nama, kode, harga) dan akun pengguna tidak pernah ikut terhapus. <b>Tindakan ini tidak bisa dibatalkan.</b></p></div></div>
+  <form method="post" class="panel-b grid-form" data-confirm="Kosongkan bagian yang kamu centang? Jenis dokumen tetap ada. Tindakan ini tidak bisa dibatalkan.">
     <?= csrf_field() ?><input type="hidden" name="act" value="reset_total">
+    <fieldset class="full" style="border:0;padding:0;margin:0"><legend style="font-weight:600;margin-bottom:6px">Pilih yang mau dikosongkan</legend>
+      <?php foreach (RESET_BAGIAN as $k => [$nm, $ket]): ?>
+        <label class="check" style="display:flex;gap:8px;align-items:flex-start;margin:6px 0"><input type="checkbox" name="bagian[]" value="<?= e($k) ?>"> <span><b><?= e($nm) ?></b><br><small class="muted"><?= e($ket) ?></small></span></label>
+      <?php endforeach; ?>
+      <p class="hint" style="margin-top:6px">Kalau kamu hanya mengosongkan penerimaan atau pengeluaran, jangan lupa ikut kosongkan angka stok dan nomor seri supaya angkanya tetap cocok.</p>
+    </fieldset>
     <div class="full"><label for="konf-reset">Ketik <code><?= e(FRASE_RESET) ?></code> untuk mengonfirmasi</label><input id="konf-reset" name="konfirmasi" autocomplete="off" placeholder="<?= e(FRASE_RESET) ?>"></div>
-    <div class="full actions"><button type="submit" class="btn danger" data-match-btn="#konf-reset" data-match="<?= e(FRASE_RESET) ?>" disabled>Hapus semua data sekarang</button></div>
+    <div class="full actions"><button type="submit" class="btn danger" data-match-btn="#konf-reset" data-match="<?= e(FRASE_RESET) ?>" disabled>Kosongkan yang dicentang</button></div>
   </form>
 </section>
 <?php endif; ?>

@@ -107,6 +107,7 @@ include 'partials/header.php'; ?>
   <div class="actions">
     <a class="btn" href="penerimaan.php#form">Catat penerimaan</a>
     <a class="btn ghost" href="pengeluaran.php#form">Catat pengeluaran</a>
+    <button type="button" class="btn ghost" id="btn-panduan" title="Penjelasan singkat cara membaca halaman ini">Cara membaca</button>
   </div>
 </div>
 
@@ -301,6 +302,31 @@ include 'partials/header.php'; ?>
     });
   }
   <?php endif; ?>
+})();
+</script>
+<script src="assets/tour.js?v=<?= APP_VER ?>"></script>
+<script>
+(() => {
+  const tombol = document.getElementById('btn-panduan'); if (!tombol || !window.SimTour) return;
+  const KUNCI = 'dokim_panduan_ringkasan';
+  const panel = judul => () => [...document.querySelectorAll('.panel')].find(p => (p.querySelector('h2') || {}).textContent.trim().startsWith(judul));
+  const kartu = n => '.strip > div:nth-child(' + n + ')';
+  const langkah = [
+    { el: '.intro', j: 'Sapaan dan waktu data', t: 'Tanggal dan jam di sini menunjukkan kapan halaman ini dimuat. Dua tombol di kanan dipakai untuk mencatat barang masuk (penerimaan) dan barang keluar (pengeluaran).' },
+    { el: () => document.querySelector('#side a[href="stok.php"]'), j: 'Menu dan angka merah', t: 'Menu ada di kiri. Angka merah di "Stok dokumen" adalah jumlah dokumen yang perlu perhatian, yaitu stoknya habis, menipis, atau diperkirakan segera habis.' },
+    { el: panel('Periode'), j: 'Periode: atur rentang tanggal', t: 'Pilih tanggal "Dari" dan "Sampai", lalu klik Terapkan. Yang berubah hanya ringkasan mutasi, grafik tren, tujuan pengeluaran, terbit/rusak, dan aktivitas. Nilai persediaan dan status stok tidak ikut berubah karena selalu menunjukkan kondisi hari ini.' },
+    { el: kartu(1), j: 'Jenis dokumen', t: 'Jumlah jenis dokumen yang dikelola. Tulisan kecil di bawahnya menunjukkan berapa yang perlu perhatian. Kalau tertulis "semua aman", tidak ada yang menipis.' },
+    { el: kartu(2), j: 'Total stok gudang', t: 'Jumlah seluruh stok yang ada di gudang sekarang, buku dan lembar digabung.' },
+    { el: kartu(3), j: 'Nilai persediaan', t: 'Hasil stok dikali harga satuan tiap dokumen. "M" artinya miliar dan "jt" artinya juta. Arahkan kursor ke angkanya untuk melihat nilai lengkap dalam rupiah.' },
+    { el: kartu(4), j: 'Mutasi dalam periode', t: 'Angka hijau dengan tanda + adalah barang masuk, angka cokelat dengan tanda − adalah barang keluar, selama periode yang kamu pilih. Di bawahnya ada jumlah kali transaksi.' },
+    { el: panel('Perlu perhatian'), j: 'Perlu perhatian', t: 'Daftar dokumen yang stoknya habis, di bawah batas, atau diperkirakan habis dalam waktu dekat. "Perkiraan habis" dihitung dari rata-rata pengeluaran 90 hari terakhir. Klik "Catat penerimaan" untuk langsung mencatat barang masuk.' },
+    { el: panel('Penerimaan dan pengeluaran'), j: 'Grafik penerimaan dan pengeluaran', t: 'Batang biru adalah barang diterima, batang emas adalah barang keluar, per bulan. Makin tinggi batangnya, makin banyak jumlahnya. Arahkan kursor ke batang untuk melihat angka pastinya.' },
+    { el: panel('Gambaran menyeluruh'), j: 'Gambaran menyeluruh', t: 'Tiga grafik ringkas: nilai persediaan per dokumen, jumlah dokumen menurut status stok (aman, rendah, kritis, habis), dan ke mana saja barang dikeluarkan pada periode terpilih.' },
+    { el: panel('Terbit'), j: 'Terbit dan rusak', t: 'Jumlah dokumen yang diterbitkan dan yang rusak tiap bulan, semua jenis digabung. Rinciannya per dokumen dan per hari ada di menu Kartu stok harian.' },
+    { el: panel('Aktivitas terakhir'), j: 'Aktivitas terakhir', t: 'Delapan transaksi terbaru pada periode terpilih. Tanda masuk atau keluar menunjukkan jenisnya, dan nama petugas yang mencatat ikut tampil.' }
+  ];
+  tombol.addEventListener('click', () => SimTour.mulai(langkah, KUNCI));
+  if (!SimTour.sudahDilihat(KUNCI)) tombol.style.boxShadow = '0 0 0 3px rgba(42,84,144,.2)';
 })();
 </script>
 <?php include 'partials/footer.php'; ?>

@@ -41,12 +41,14 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Halaman (navigasi): coba jaringan dulu supaya data selalu segar;
-  // kalau gagal (offline/putus), tampilkan versi scan.php yang tersimpan.
+  // Halaman (navigasi): selalu jaringan dulu supaya data segar.
+  // Hanya halaman pindai (scan.php) yang boleh diganti versi tersimpan saat offline.
+  // Halaman lain (index.php, login.php, dst.) TIDAK diganti, supaya orang yang mau
+  // masuk tidak "nyasar" ke halaman pindai ketika server sedang tidak bisa dijangkau.
   if (req.mode === 'navigate') {
-    event.respondWith(
-      fetch(req).catch(() => caches.match('scan.php'))
-    );
+    if (/\/scan\.php$/.test(url.pathname)) {
+      event.respondWith(fetch(req).catch(() => caches.match('scan.php')));
+    }
     return;
   }
 
