@@ -6,6 +6,7 @@ $menu = [
   'pengeluaran.php' => 'Pengeluaran',
   'kartu-stok.php'  => 'Kartu stok harian',
   'opname.php'      => 'Opname fisik',
+  'arsip.php'       => 'Arsip tahun lama',
   'scan.php'        => 'Scan barcode',
 ];
 if (is_super()) { $menu['impor_excel.php'] = 'Impor Excel'; $menu['pengaturan.php'] = 'Pengguna'; }

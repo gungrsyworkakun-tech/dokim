@@ -86,22 +86,27 @@ unset($_SESSION['csrf']); $csrf = csrf();   // token baru setiap tampil
 ?><!DOCTYPE html>
 <html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><title>Masuk · SIM-DOKIM</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="image" href="assets/login-kanim.webp" type="image/webp" media="(min-width:981px)" fetchpriority="high">
+<link rel="preload" as="image" href="assets/login-kanim-m.webp" type="image/webp" media="(max-width:980px)" fetchpriority="high">
 <style nonce="<?= $nonce ?>">
 :root{--ink:#161a21;--ink-2:#3d4452;--ink-3:#667085;--line:#d5dae1;--navy:#14304f;--navy-2:#2a5490;--gold:#c4922e;--bg:#f3f5f8}
 *{box-sizing:border-box;margin:0}
 html{background:#0d2036}
 body{font:14px/1.6 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);min-height:100vh;position:relative;display:grid;grid-template-columns:minmax(0,1fr) 440px;grid-template-rows:auto 1fr auto;column-gap:56px;padding:0 clamp(24px,6vw,96px);isolation:isolate}
 /* foto gedung kantor sebagai latar penuh, ditutup lapisan biru tua supaya tulisan tetap terbaca */
-body::before{content:"";position:fixed;inset:0;z-index:-2;background:#0d2036 url("assets/login-kanim.jpg") 28% center/cover no-repeat}
+body::before{content:"";position:fixed;inset:-24px;z-index:-3;background:#0d2036 url("data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAASACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwBsLRNb3EsMa4+VSGXI5PoavWl1dw2mImJ+U4RjnB/2e9ZWrXE+IxGxAJO4L0OPWo5dUeFLdUY7to388A7j/jSbdxqzRVuJZDfqzgsXfksakmeKWSRowUZjlQOijuPrSJcrqDYYrEVIx6+9VZIzHK43bhk4I5qbMTR1zRpvtRsXDIWIx1PHNclqYB1aQEAjd0/GiitRGpcRRi0iIRQeOQKxXJ84cn7zCiisVuy5dD//2Q==") 28% center/cover no-repeat;filter:blur(14px)}
+#bgw{position:fixed;inset:0;z-index:-2;overflow:hidden}
+.bg{display:block;width:100%;height:100%;object-fit:cover;object-position:28% center;opacity:0;transition:opacity .6s ease}
+.bg.ok{opacity:1}
 body::after{content:"";position:fixed;inset:0;z-index:-1;background:
   linear-gradient(180deg,rgba(9,24,43,.78) 0,rgba(9,24,43,.15) 22%,rgba(9,24,43,.15) 45%,rgba(9,24,43,.88) 100%),
   linear-gradient(90deg,rgba(9,24,43,.55) 0,rgba(9,24,43,.1) 55%,rgba(9,24,43,.55) 100%)}
-.brand{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding-top:36px}
+.brand{grid-column:1/-1;grid-row:1;display:flex;align-items:center;gap:14px;padding-top:36px}
 .seal{width:42px;height:42px;border-radius:10px;background:rgba(255,255,255,.14);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#fff;display:grid;place-items:center;font:600 14px "IBM Plex Mono",monospace;border:1px solid rgba(255,255,255,.28);box-shadow:inset 0 -2px 0 var(--gold)}
 .brand b{display:block;font-size:16px;letter-spacing:.3px;color:#fff;font-weight:600}
 .brand small{display:block;color:rgba(255,255,255,.72);font-size:12.5px}
-.lead{grid-column:1;align-self:end;padding-bottom:44px;max-width:560px;color:#fff}
+.lead{grid-column:1;grid-row:2;align-self:end;padding-bottom:44px;max-width:560px;color:#fff}
 .lead h2{font-size:clamp(26px,3.2vw,40px);line-height:1.18;font-weight:600;letter-spacing:-.015em;text-shadow:0 2px 24px rgba(0,0,0,.35)}
 .lead p{margin-top:16px;color:rgba(255,255,255,.82);font-size:15px;line-height:1.7;max-width:46ch}
 .lead::before{content:"";display:block;width:44px;height:3px;background:var(--gold);margin-bottom:22px;border-radius:2px}
@@ -134,7 +139,7 @@ input:focus{outline:none;border-color:var(--navy-2);box-shadow:0 0 0 3px rgba(42
 .org{grid-column:1/-1;grid-row:3;padding:0 0 26px;font-size:12px;color:rgba(255,255,255,.6)}
 @media(max-width:980px){
   body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr auto;column-gap:0;padding:0 20px}
-  body::before{background-position:30% center}
+  .bg{object-position:30% center}
   body::after{background:linear-gradient(180deg,rgba(9,24,43,.7) 0,rgba(9,24,43,.55) 60%,rgba(9,24,43,.85) 100%)}
   .brand{padding-top:24px}
   .lead{display:none}
@@ -164,6 +169,7 @@ input:focus{outline:none;border-color:var(--navy-2);box-shadow:0 0 0 3px rgba(42
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head>
 <body>
+<div id="bgw" aria-hidden="true"><picture><source media="(max-width:980px)" srcset="assets/login-kanim-m.webp" type="image/webp"><source srcset="assets/login-kanim.webp" type="image/webp"><img class="bg" id="bg" src="assets/login-kanim.jpg" alt="" width="1600" height="900" decoding="async" fetchpriority="high"></picture></div>
 <header class="brand"><span class="seal">SD</span><span><b>SIM-DOKIM</b><small>Sistem Informasi Manajemen Dokumen Keimigrasian</small></span></header>
 <section class="lead">
   <h2>Buku stok blanko dokumen keimigrasian</h2>
@@ -197,6 +203,8 @@ input:focus{outline:none;border-color:var(--navy-2);box-shadow:0 0 0 3px rgba(42
 </main>
 <div class="org">Seksi TIK Kantor Imigrasi Kelas I Khusus TPI Ngurah Rai</div>
 <script nonce="<?= $nonce ?>">
+(()=>{const g=document.getElementById('bg'),ok=()=>g.classList.add('ok');g.complete&&g.naturalWidth?ok():g.addEventListener('load',ok);g.addEventListener('error',ok);
+const l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap';document.head.appendChild(l)})();
 const $=i=>document.getElementById(i),t=$('t'),p=$('p'),b=$('b'),f=$('card'),cw=$('cw'),lk=$('lk');
 t.onclick=()=>{const h=p.type==='password';p.type=h?'text':'password';t.textContent=h?'Sembunyikan':'Tampilkan'};
 ['keyup','keydown'].forEach(ev=>p.addEventListener(ev,e=>{cw.hidden=!(e.getModifierState&&e.getModifierState('CapsLock'))}));

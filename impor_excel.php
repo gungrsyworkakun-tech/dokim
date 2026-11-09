@@ -2,6 +2,8 @@
 require 'lib/xlsx_reader.php';
 require 'lib/impor_dokim.php';
 require_once 'lib/seri_stok.php';
+require_once 'lib/arsip_tahun.php';
+arsip_siapkan($pdo);
 
 const IMPOR_MB_MAX = 8;             // maks ukuran berkas .xlsx yang diterima
 const IMPOR_SKOR_OTOMATIS = 55;     // di atas ini, sheet otomatis dipetakan ke dokumen tanpa perlu dipilih manual
@@ -14,6 +16,7 @@ $tahunSekarang = (int)date('Y');
 $hasilSheet = null;      // null = belum ada analisis; array = hasil analisis utk ditampilkan
 $xlsxB64 = null;
 $tahunDipakai = $tahunSekarang;
+$modeArsip = false;
 $sheetInfo = [];          // nama sheet => ['dokumen_id'=>?int,'skor'=>float,'status'=>...]
 
 /* ============================================================
@@ -25,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'import')
   $pilih = array_map('strval', (array)($_POST['pilih'] ?? []));
   $pilihSet = array_flip($pilih);
 
-  $berhasil = 0; $berhasilKeluar = 0; $dilewati = 0; $gagal = []; $seriMasuk = 0; $seriKeluar = 0; $seriTakCocok = 0;
+  $berhasil = 0; $berhasilKeluar = 0; $dilewati = 0; $gagal = []; $seriMasuk = 0; $seriKeluar = 0; $seriTakCocok = 0; $berhasilArsip = 0;
   foreach ($kandidat as $k) {
     if (!isset($pilihSet[(string)($k['id'] ?? '')])) continue;
 
@@ -42,6 +45,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'import')
       if ($tujuan === '') $tujuan = '(tidak dicatat di sumber)';
       if ($noBa === '') $noBa = 'ARSIP-' . $dokumenId . '-' . $tanggal;     // Excel tidak mencatat No. BA: pakai penanda arsip
       $tujuan = mb_substr($tujuan, 0, 80);
+    }
+
+    // Tahun lama = ARSIP SAJA: hanya masuk tabel arsip, stok dan nomor seri saat ini tidak berubah
+    if (valid_date($tanggal) && (int)substr($tanggal, 0, 4) < $tahunSekarang) {
+      $kodeA = mb_substr(trim((string)($k['kode_arsip'] ?? '')), 0, 30);
+      $namaA = mb_substr(trim((string)($k['nama_arsip'] ?? '')), 0, 100);
+      if ($dokumenId > 0 && !isset($dokById[$dokumenId])) { $gagal[] = "Baris arsip dari sheet \"$sheet\": jenis dokumen tidak ditemukan."; continue; }
+      if ($dokumenId <= 0 && ($kodeA === '' || $namaA === '')) { $gagal[] = "Baris arsip dari sheet \"$sheet\": kode/nama dokumen arsip kosong, dilewati."; continue; }
+      if ($jumlah < 1 || $jumlah > 10000000) { $gagal[] = "Baris arsip dari sheet \"$sheet\": jumlah tidak valid, dilewati."; continue; }
+      $dkey = arsip_kunci_dok($dokumenId > 0 ? $dokumenId : null, $kodeA);
+      $s = $pdo->prepare('SELECT 1 FROM arsip_transaksi WHERE doc_key=? AND jenis=? AND tanggal=? AND jumlah=? AND IFNULL(no_ba,\'\')=?');
+      $s->execute([$dkey, $jenis, $tanggal, $jumlah, $noBa]);
+      if ($s->fetch()) { $dilewati++; continue; }
+      $pdo->prepare('INSERT INTO arsip_transaksi(tahun,doc_key,dokumen_id,kode_arsip,nama_arsip,jenis,tanggal,jumlah,no_ba,tujuan,seri_awal,seri_akhir,sumber) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          ->execute([(int)substr($tanggal, 0, 4), $dkey, $dokumenId > 0 ? $dokumenId : null, $dokumenId > 0 ? null : $kodeA, $dokumenId > 0 ? null : $namaA,
+                     $jenis, $tanggal, $jumlah, $noBa !== '' ? mb_substr($noBa, 0, 80) : null, $jenis === 'pengeluaran' ? (trim((string)($k['tujuan'] ?? '')) ?: null) : null,
+                     $seriAwal ?: null, $seriAkhir ?: null, mb_substr("Impor Excel (sheet \"$sheet\")", 0, 100)]);
+      $berhasilArsip++;
+      continue;
     }
 
     if ($jumlah < 1 || $jumlah > 10000000 || !valid_date($tanggal) || $tanggal > date('Y-m-d') || $noBa === '' || mb_strlen($noBa) > 60) {
@@ -84,6 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act'] ?? '') === 'import')
   }
 
   $pesan = "$berhasil penerimaan dan $berhasilKeluar pengeluaran berhasil ditambahkan.";
+  if ($berhasilArsip) $pesan = "$berhasilArsip transaksi tahun lama disimpan sebagai ARSIP (stok dan nomor seri saat ini tidak berubah). " . ($berhasil + $berhasilKeluar ? $pesan : '');
   if ($dilewati)      $pesan .= " $dilewati dilewati (ternyata sudah ada di database, atau nomor serinya sama dengan penerimaan lain).";
   if ($seriMasuk || $seriKeluar) $pesan .= " Nomor seri stok ikut diperbarui ($seriMasuk masuk, $seriKeluar keluar).";
   if ($seriTakCocok)  $pesan .= " $seriTakCocok pengeluaran nomor serinya tidak ditemukan di stok aktif/tersimpan, jadi daftar seri stok tidak berubah — cek di halaman detail dokumen.";
@@ -114,6 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['act'] ?? '', ['ung
 
   $tmpPath = tempnam(sys_get_temp_dir(), 'dokim_xlsx_');
   file_put_contents($tmpPath, $xlsxBytes);
+  $modeArsip = $tahunDipakai < $tahunSekarang;
   $overridePeta = (array)($_POST['peta'] ?? []);   // nama sheet => '' (lewati) atau id dokumen, dari pemetaan manual
 
   try {
@@ -125,6 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['act'] ?? '', ['ung
       $rows = $xr->readSheet($nama);
 
       // tentukan dokumen_id: pemetaan manual kalau ada, kalau tidak coba tebak otomatis dari nama sheet
+      $kodeBaru = ''; $namaBaru = '';
       $skorTerbaik = 0; $dokTerbaik = null;
       foreach ($dok as $d) {
         $skor = impor_skor_kemiripan($nama, $d['nama']);
@@ -132,8 +157,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['act'] ?? '', ['ung
       }
 
       if (array_key_exists($nama, $overridePeta)) {
-        $idDipilih = (int)$overridePeta[$nama];
-        $dokumenId = $idDipilih > 0 ? $idDipilih : null;
+        $pilihan = (string)$overridePeta[$nama];
+        if ($pilihan === 'baru' && $modeArsip) {
+          $dokumenId = 0;     // 0 = dokumen arsip baru (tidak dibuat di daftar stok sekarang)
+          $kodeBaru = mb_substr(trim((string)($_POST['baru_kode'][$nama] ?? '')), 0, 30);
+          $namaBaru = mb_substr(trim((string)($_POST['baru_nama'][$nama] ?? '')), 0, 100);
+          if ($kodeBaru === '' || $namaBaru === '') { $dokumenId = null; }
+        } else {
+          $idDipilih = (int)$pilihan;
+          $dokumenId = $idDipilih > 0 ? $idDipilih : null;
+        }
         $otomatis = false;
       } else {
         $dokumenId = ($skorTerbaik >= IMPOR_SKOR_OTOMATIS && $dokTerbaik) ? (int)$dokTerbaik['id'] : null;
@@ -145,9 +178,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['act'] ?? '', ['ung
         'tebakan_id' => $dokTerbaik ? (int)$dokTerbaik['id'] : null,
         'skor' => round($skorTerbaik),
         'otomatis' => $otomatis,
+        'baru' => $dokumenId === 0,
+        'kode_baru' => $kodeBaru ?? '', 'nama_baru' => $namaBaru ?? '',
       ];
+      if ($dokumenId === 0) { $sheetInfo[$nama]['dokumen_id'] = 0; }
 
-      if ($dokumenId === null || !isset($dokById[$dokumenId])) {
+      if ($dokumenId === null || ($dokumenId !== 0 && !isset($dokById[$dokumenId]))) {
         $hasilSheet[$nama] = ['ok' => null, 'pesan' => 'Belum dipetakan ke jenis dokumen.', 'baris' => [], 'peringatan' => []];
         continue;
       }
@@ -173,7 +209,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['act'] ?? '', ['ung
   // cek mana yang sudah ada di database (per dokumen_id + no_ba, dibandingkan tanpa peduli huruf besar/kecil & spasi)
   $existing = [];
   $dokIdsDipakai = array_values(array_unique(array_filter(array_column($sheetInfo, 'dokumen_id'))));
-  if ($dokIdsDipakai) {
+  if ($modeArsip) {
+    $s = $pdo->prepare('SELECT doc_key, jenis, tanggal, jumlah, IFNULL(no_ba,\'\') nb FROM arsip_transaksi WHERE tahun=?');
+    $s->execute([$tahunDipakai]);
+    foreach ($s->fetchAll() as $row) $existing['A|' . $row['doc_key'] . '|' . $row['jenis'] . '|' . $row['tanggal'] . '|' . (int)$row['jumlah'] . '|' . $row['nb']] = true;
+  } elseif ($dokIdsDipakai) {
     $place = implode(',', array_fill(0, count($dokIdsDipakai), '?'));
     $s = $pdo->prepare("SELECT dokumen_id, no_ba FROM penerimaan WHERE dokumen_id IN ($place)");
     $s->execute($dokIdsDipakai);
@@ -189,14 +229,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['act'] ?? '', ['ung
   foreach ($hasilSheet as $nama => &$h) {
     if ($h['ok'] !== true) continue;
     $dokumenId = $sheetInfo[$nama]['dokumen_id'];
+    $dkeyA = arsip_kunci_dok($dokumenId ?: null, $sheetInfo[$nama]['kode_baru']);
     foreach ($h['baris'] as &$b) {
       $b['tanggal'] = sprintf('%04d-%02d-%02d', $tahunDipakai, $b['bulan'], $b['tgl']);
-      $key = $b['jenis'] === 'pengeluaran'
+      $key = $modeArsip
+        ? 'A|' . $dkeyA . '|' . $b['jenis'] . '|' . $b['tanggal'] . '|' . (int)$b['jumlah'] . '|' . ($b['no_ba'] === '-' ? '' : $b['no_ba'])
+        : ($b['jenis'] === 'pengeluaran'
         ? 'pengeluaran|' . $dokumenId . '|' . $b['tanggal'] . '|' . (int)$b['jumlah']
-        : 'penerimaan|' . $dokumenId . '|' . impor_normalisasi($b['no_ba']);
+        : 'penerimaan|' . $dokumenId . '|' . impor_normalisasi($b['no_ba']));
       $b['status'] = isset($existing[$key]) ? 'sudah_ada' : 'baru';
       $b['dokumen_id'] = $dokumenId;
-      $b['dokumen_nama'] = $dokById[$dokumenId]['nama'];
+      $b['dokumen_nama'] = $dokumenId ? $dokById[$dokumenId]['nama'] : $sheetInfo[$nama]['nama_baru'] . ' (arsip)';
+      $b['kode_arsip'] = $sheetInfo[$nama]['kode_baru']; $b['nama_arsip'] = $sheetInfo[$nama]['nama_baru'];
       $b['sheet'] = $nama;
       $b['id'] = 'k' . (++$idCounter);
       if ($b['status'] === 'baru') { $kandidatBaru[] = $b; $totalBaru++; } else { $totalSudahAda++; }
@@ -279,6 +323,14 @@ include 'partials/header.php'; ?>
   <div class="panel-h"><div><h2>Pemetaan sheet → jenis dokumen</h2>
     <p>Dicocokkan otomatis dari nama sheet. Kalau ada yang salah atau belum terpetakan (ditandai merah), pilih manual lalu klik "Terapkan &amp; analisis ulang".</p></div></div>
   <div class="panel-b">
+    <?php if ($modeArsip): $belumAda = []; foreach ($sheetInfo as $n => $i) if (!$i['dokumen_id'] && !$i['baru']) $belumAda[] = $n; ?>
+      <div style="display:block;background:#fff7e0;border:1px solid #e6c866;border-radius:10px;padding:12px 14px;margin-bottom:14px;line-height:1.6">
+        <b>Mode ARSIP — tahun <?= (int)$tahunDipakai ?></b><br>
+        Data tahun lama hanya disimpan sebagai arsip. <b>Stok, nomor seri aktif/tersimpan, dan penerimaan/pengeluaran yang berjalan sekarang tidak akan berubah.</b>
+        <?php if ($belumAda): ?><br><span style="color:#a15c00"><b>Kode dan nama dokumen belum ada di sistem untuk tahun <?= (int)$tahunDipakai ?>:</b> <?= e(implode(', ', $belumAda)) ?>.
+        Pilih di tabel bawah: petakan ke dokumen yang sudah ada, simpan sebagai dokumen arsip baru (isi kode &amp; nama), atau lewati.</span><?php endif; ?>
+      </div>
+    <?php endif; ?>
     <form method="post" class="js-progres-sederhana" data-label-proses="Menganalisis ulang…">
       <?= csrf_field() ?><input type="hidden" name="act" value="petakan_ulang">
       <input type="hidden" name="tahun" value="<?= $tahunDipakai ?>">
@@ -289,15 +341,21 @@ include 'partials/header.php'; ?>
         <?php foreach ($sheetInfo as $nama => $info): $h = $hasilSheet[$nama]; ?>
           <tr>
             <td><?= e($nama) ?></td>
-            <td><select name="peta[<?= e($nama) ?>]">
+            <td><select name="peta[<?= e($nama) ?>]" class="js-peta">
                 <option value="">— Lewati sheet ini —</option>
+                <?php if ($modeArsip): ?><option value="baru"<?= $info['baru'] ? ' selected' : '' ?>>+ Simpan sebagai dokumen ARSIP baru</option><?php endif; ?>
                 <?php foreach ($dok as $d): ?>
                   <option value="<?= $d['id'] ?>"<?= (int)$d['id'] === (int)$info['dokumen_id'] ? ' selected' : '' ?>><?= e($d['nama']) ?> (<?= e($d['kode']) ?>)</option>
                 <?php endforeach; ?>
-              </select></td>
+              </select>
+              <?php if ($modeArsip): ?>
+              <div class="js-baru" style="margin-top:6px;<?= $info['baru'] || (!$info['dokumen_id'] && $hasilSheet[$nama]['ok'] === null) ? '' : 'display:none' ?>">
+                <input type="text" name="baru_kode[<?= e($nama) ?>]" maxlength="30" placeholder="Kode dokumen arsip" value="<?= e($info['kode_baru']) ?>" style="width:46%">
+                <input type="text" name="baru_nama[<?= e($nama) ?>]" maxlength="100" placeholder="Nama dokumen arsip" value="<?= e($info['nama_baru'] !== '' ? $info['nama_baru'] : $nama) ?>" style="width:50%">
+              </div><?php endif; ?></td>
             <td class="num"><?= $info['skor'] ?>%</td>
             <td>
-              <?php if ($info['dokumen_id'] === null): ?><span class="st st-pending">Belum dipetakan</span>
+              <?php if ($info['dokumen_id'] === null): ?><span class="st st-pending"><?= $modeArsip ? 'Belum ada — butuh konfirmasi' : 'Belum dipetakan' ?></span>
               <?php elseif ($h['ok'] === false): ?><span class="st st-pending" title="<?= e($h['pesan']) ?>">Gagal dibaca</span>
               <?php else: ?><?= (int)($h['n_terima'] ?? 0) ?> penerimaan, <?= (int)($h['n_keluar'] ?? 0) ?> pengeluaran ditemukan<?php endif; ?>
             </td>
@@ -330,6 +388,7 @@ if ($adaMasalah): ?>
 <section class="panel">
   <div class="panel-h">
     <div><h2>Hasil analisis</h2>
+      <?php if ($modeArsip): ?><p style="color:#a15c00"><b>ARSIP tahun <?= (int)$tahunDipakai ?>:</b> hasilnya hanya masuk ke halaman <a href="arsip.php">Arsip tahun lama</a>, tidak mengubah stok sekarang.</p><?php endif; ?>
       <p><?= $totalBaru ?> transaksi (penerimaan &amp; pengeluaran) <b>belum tercatat</b> di database (siap ditambahkan), <?= $totalSudahAda ?> sudah ada sebelumnya (tidak ditampilkan lagi supaya tidak dobel).</p></div>
   </div>
   <div class="panel-b">
@@ -360,13 +419,17 @@ if ($adaMasalah): ?>
           <?php endforeach; ?>
           </tbody>
         </table></div>
-        <p style="margin-top:12px"><button type="submit" class="btn" data-confirm="Tambahkan <?= count($kandidatBaru) ?> transaksi yang dicentang ke database? Stok akan bertambah (penerimaan) atau berkurang (pengeluaran).">Tambahkan yang dicentang ke database</button></p>
+        <p style="margin-top:12px"><button type="submit" class="btn" data-confirm="<?= $modeArsip ? 'Simpan ' . count($kandidatBaru) . ' transaksi yang dicentang sebagai ARSIP tahun ' . (int)$tahunDipakai . '? Stok dan nomor seri sekarang tidak berubah.' : 'Tambahkan ' . count($kandidatBaru) . ' transaksi yang dicentang ke database? Stok akan bertambah (penerimaan) atau berkurang (pengeluaran).' ?>"><?= $modeArsip ? 'Simpan yang dicentang sebagai arsip' : 'Tambahkan yang dicentang ke database' ?></button></p>
       </form>
     <?php endif; ?>
   </div>
 </section>
 
 <script>
+document.querySelectorAll('.js-peta').forEach(sel => {
+  const tampil = () => { const b = sel.closest('td').querySelector('.js-baru'); if (b) b.style.display = sel.value === 'baru' ? '' : 'none'; };
+  sel.addEventListener('change', tampil); tampil();
+});
 document.querySelectorAll('.js-progres-sederhana').forEach(f => {
   f.addEventListener('submit', () => {
     const btn = f.querySelector('button[type=submit]');
