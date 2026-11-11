@@ -334,6 +334,18 @@ function login_required() {
     header('Location: login.php?exp=1' . ($next ? '&next=' . urlencode($next) : ''));
     exit;
   }
+  // Cek ulang ke database tiap permintaan: akun yang dihapus langsung tidak bisa masuk lagi,
+  // dan perubahan role langsung berlaku (sebelumnya baru berlaku saat login berikutnya).
+  $s = $GLOBALS['pdo']->prepare('SELECT role FROM users WHERE id=?');
+  $s->execute([(int)$_SESSION['u']['id']]);
+  $role = $s->fetchColumn();
+  if ($role === false) {
+    $_SESSION = [];
+    session_destroy();
+    header('Location: login.php?exp=1');
+    exit;
+  }
+  $_SESSION['u']['role'] = $role;
   $_SESSION['last'] = time();
 }
 }
@@ -421,8 +433,10 @@ function csv_out(string $nama, array $head, array $rows) {
   header('Content-Disposition: attachment; filename="' . $nama . '"');
   $o = fopen('php://output', 'w');
   fwrite($o, "\xEF\xBB\xBF");
-  fputcsv($o, $head, ';');
-  foreach ($rows as $r) fputcsv($o, array_values($r), ';');
+  // sel yang diawali = + - @ dianggap rumus oleh Excel (CSV injection) -> beri awalan ' agar dibaca sebagai teks
+  $aman = fn($v) => (is_string($v) && $v !== '' && strpos("=+-@\t\r", $v[0]) !== false && !is_numeric($v)) ? "'" . $v : $v;
+  fputcsv($o, array_map($aman, $head), ';');
+  foreach ($rows as $r) fputcsv($o, array_map($aman, array_values($r)), ';');
   exit;
 }
 }

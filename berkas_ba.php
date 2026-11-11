@@ -67,7 +67,7 @@ include 'partials/header.php'; ?>
   <div class="panel-b">
     <?php if ($r['file_ba']): ?>
       <p>
-        <a class="btn sm" href="uploads/berita_acara/<?= e($tipe) ?>/<?= e($r['file_ba']) ?>" target="_blank" rel="noopener">Buka berkas</a>
+        <a class="btn sm" href="berkas_lihat.php?jenis=ba&amp;tipe=<?= e($tipe) ?>&amp;id=<?= $id ?>" target="_blank" rel="noopener">Buka berkas</a>
         <?php if (is_super()): ?>
           <form method="post" class="inline" data-confirm="Hapus berkas ini?" style="display:inline-block;margin-left:8px">
             <?= csrf_field() ?><input type="hidden" name="act" value="hapus">

@@ -93,7 +93,7 @@ include 'partials/header.php'; ?>
     <div class="full"><div class="foto-grid">
       <?php foreach ($fotos as $f): ?>
         <div class="foto-item">
-          <a href="uploads/penerimaan/<?= $id ?>/<?= e($f['file']) ?>" target="_blank" rel="noopener"><img src="uploads/penerimaan/<?= $id ?>/<?= e($f['file']) ?>" alt="Foto batch <?= e($r['no_ba']) ?>" loading="lazy"></a>
+          <a href="berkas_lihat.php?jenis=foto&amp;id=<?= (int)$f['id'] ?>" target="_blank" rel="noopener"><img src="berkas_lihat.php?jenis=foto&amp;id=<?= (int)$f['id'] ?>" alt="Foto batch <?= e($r['no_ba']) ?>" loading="lazy"></a>
           <?php if (is_super()): ?><form method="post" class="inline" data-confirm="Hapus foto ini?"><?= csrf_field() ?><input type="hidden" name="act" value="hapus_foto"><input type="hidden" name="foto_id" value="<?= $f['id'] ?>"><button class="btn sm danger foto-del" title="Hapus foto">×</button></form><?php endif; ?>
         </div>
       <?php endforeach; ?>
