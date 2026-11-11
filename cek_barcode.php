@@ -46,7 +46,7 @@ include 'partials/header_publik.php'; ?>
   </dl>
 
   <?php if ($seri !== ''): ?><p class="pub-note">Ditemukan lewat nomor seri <span class="mono"><?= e($seri) ?></span>.</p><?php endif; ?>
-  <?php if (!empty($r['catatan'])): ?><p class="pub-note"><b>Catatan:</b> <?= e($r['catatan']) ?></p><?php endif; ?>
+  <?php if ($token !== '' && !empty($r['catatan'])): ?><p class="pub-note"><b>Catatan:</b> <?= e($r['catatan']) ?></p><?php endif; ?>
 
   <div class="pub-cta">
     <p>Mau catat barang dari batch ini keluar?</p>

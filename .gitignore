@@ -1,0 +1,5 @@
+# Berkas unggahan pengguna jangan ikut ke git (kecuali .htaccess pelindungnya)
+uploads/*
+!uploads/.htaccess
+.env
+*.log

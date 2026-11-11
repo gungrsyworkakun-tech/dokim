@@ -34,7 +34,7 @@ class MiniZip {
 
     if ($e['method'] === 0) return $raw;                            // disimpan tanpa kompresi
     if ($e['method'] === 8) {
-      $hasil = @gzinflate($raw);
+      $hasil = @gzinflate($raw, 64 * 1024 * 1024);   // batas 64 MB hasil ekstrak: cegah "zip bomb" menghabiskan memori server
       return $hasil === false ? false : $hasil;
     }
     return false;                                                    // metode kompresi lain tidak didukung (jarang dipakai Excel)

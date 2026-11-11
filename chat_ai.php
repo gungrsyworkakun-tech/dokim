@@ -31,10 +31,11 @@ function jawab(array $data, int $kode = 200): never {
 register_shutdown_function(function () {
   $e = error_get_last();
   if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+    error_log('SIMDOKIM fatal: ' . $e['message'] . ' (' . basename($e['file']) . ':' . $e['line'] . ')');
     while (ob_get_level() > 0) ob_end_clean();
     header('Content-Type: application/json; charset=utf-8');
     http_response_code(200);
-    echo json_encode(['error' => 'Error di server: ' . $e['message'] . ' (' . basename($e['file']) . ':' . $e['line'] . ')'], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    echo json_encode(['error' => 'Terjadi error di server. Coba lagi; kalau berulang, hubungi pengelola aplikasi.'], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
   }
 });
 

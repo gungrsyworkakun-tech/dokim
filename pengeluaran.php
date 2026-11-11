@@ -245,7 +245,7 @@ include 'partials/header.php'; ?>
         <td><?= e($r['tujuan']) ?></td>
         <td class="mono nowrap">
           <?php if (!empty($r['file_ba'])): ?>
-            <a href="uploads/berita_acara/pengeluaran/<?= e($r['file_ba']) ?>" target="_blank" rel="noopener" title="Buka berkas BA"><?= e($r['no_ba']) ?></a>
+            <a href="berkas_lihat.php?jenis=ba&amp;tipe=pengeluaran&amp;id=<?= (int)$r['id'] ?>" target="_blank" rel="noopener" title="Buka berkas BA"><?= e($r['no_ba']) ?></a>
           <?php else: ?>
             <?= e($r['no_ba']) ?> <a class="ba-upload" href="berkas_ba.php?tipe=pengeluaran&id=<?= $r['id'] ?>" title="Unggah berkas BA">unggah</a>
           <?php endif; ?>

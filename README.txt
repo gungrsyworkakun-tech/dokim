@@ -18,6 +18,9 @@ STRUKTUR
   assets/app.js         fitur bantu di browser
   akun.php              ganti password sendiri (baru)
   ping.php              dipakai tombol "Perpanjang" sesi (baru)
+  berkas_lihat.php      penyaji berkas unggahan (BA, foto) khusus pengguna yang sudah login
+  uploads/.htaccess     menutup akses langsung ke folder unggahan (Apache). Di Nginx, tambahkan
+                        `location /uploads/ { deny all; }`
 
 FITUR BANTU BARU
 - Pencarian cepat: tekan Ctrl+K (atau /) di halaman mana pun untuk melompat ke dokumen atau menu.
@@ -57,3 +60,9 @@ PENGATURAN TAMBAHAN (config.php)
 
 Catatan: font (IBM Plex) dan grafik (Chart.js) dimuat dari internet. Tanpa internet,
 aplikasi tetap jalan dengan font sistem dan grafik digantikan pesan singkat.
+
+KEAMANAN (wajib dibaca sebelum dipakai sungguhan)
+- Ganti password akun contoh (superadmin / admin) segera setelah import database.sql.
+- Jangan simpan password database di kode: set lewat variabel lingkungan DB_HOST, DB_NAME, DB_USER, DB_PASS.
+  Pakai user MySQL khusus aplikasi, bukan root.
+- Folder uploads/ tidak boleh bisa dibuka langsung; berkas hanya lewat berkas_lihat.php.

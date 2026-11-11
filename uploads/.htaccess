@@ -1,0 +1,3 @@
+# Berkas unggahan (BA, foto batch) TIDAK boleh dibuka langsung lewat URL.
+# Semuanya disajikan oleh berkas_lihat.php setelah cek login.
+Require all denied
