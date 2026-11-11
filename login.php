@@ -87,8 +87,8 @@ unset($_SESSION['csrf']); $csrf = csrf();   // token baru setiap tampil
 <html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><title>Masuk · SIM-DOKIM</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="preload" as="image" href="assets/login-kanim.webp" type="image/webp" media="(min-width:981px)" fetchpriority="high">
-<link rel="preload" as="image" href="assets/login-kanim-m.webp" type="image/webp" media="(max-width:980px)" fetchpriority="high">
+<link rel="preload" as="image" href="assets/img/login-kanim.webp" type="image/webp" media="(min-width:981px)" fetchpriority="high">
+<link rel="preload" as="image" href="assets/img/login-kanim-m.webp" type="image/webp" media="(max-width:980px)" fetchpriority="high">
 <style nonce="<?= $nonce ?>">
 :root{--ink:#161a21;--ink-2:#3d4452;--ink-3:#667085;--line:#d5dae1;--navy:#14304f;--navy-2:#2a5490;--gold:#c4922e;--bg:#f3f5f8}
 *{box-sizing:border-box;margin:0}
@@ -169,7 +169,7 @@ input:focus{outline:none;border-color:var(--navy-2);box-shadow:0 0 0 3px rgba(42
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head>
 <body>
-<div id="bgw" aria-hidden="true"><picture><source media="(max-width:980px)" srcset="assets/login-kanim-m.webp" type="image/webp"><source srcset="assets/login-kanim.webp" type="image/webp"><img class="bg" id="bg" src="assets/login-kanim.jpg" alt="" width="1600" height="900" decoding="async" fetchpriority="high"></picture></div>
+<div id="bgw" aria-hidden="true"><picture><source media="(max-width:980px)" srcset="assets/img/login-kanim-m.webp" type="image/webp"><source srcset="assets/img/login-kanim.webp" type="image/webp"><img class="bg" id="bg" src="assets/img/login-kanim.jpg" alt="" width="1600" height="900" decoding="async" fetchpriority="high"></picture></div>
 <header class="brand"><span class="seal">SD</span><span><b>SIM-DOKIM</b><small>Sistem Informasi Manajemen Dokumen Keimigrasian</small></span></header>
 <section class="lead">
   <h2>Buku stok blanko dokumen keimigrasian</h2>

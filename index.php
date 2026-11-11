@@ -304,7 +304,7 @@ include 'partials/header.php'; ?>
   <?php endif; ?>
 })();
 </script>
-<script src="assets/tour.js?v=<?= APP_VER ?>"></script>
+<script src="assets/js/tour.js?v=<?= APP_VER ?>"></script>
 <script>
 (() => {
   const tombol = document.getElementById('btn-panduan'); if (!tombol || !window.SimTour) return;

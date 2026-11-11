@@ -11,11 +11,11 @@ $v = APP_VER;
 const CACHE = 'dokim-scan-v<?= $v ?>';
 const CORE_ASSETS = [
   'scan.php',
-  'assets/style.css?v=<?= $v ?>',
-  'assets/html5-qrcode.min.js?v=<?= $v ?>',
+  'assets/css/style.css?v=<?= $v ?>',
+  'assets/js/html5-qrcode.min.js?v=<?= $v ?>',
   'manifest.webmanifest',
-  'assets/icon-192.png',
-  'assets/icon-512.png'
+  'assets/img/icon-192.png',
+  'assets/img/icon-512.png'
 ];
 
 self.addEventListener('install', event => {

@@ -9,14 +9,14 @@
  * Percakapan disimpan di database per pengguna, sehingga tetap ada saat pindah tab/halaman/perangkat.
  *
  * Selain itu: AI bisa membuat grafik (alat "grafik", diambil dari tabel hasil alat) dan memeriksa berkas .xlsx/.csv
- * yang dilampirkan pengguna (lib/chat_berkas.php, diunggah lewat chat_berkas.php).
+ * yang dilampirkan pengguna (lib/chat_berkas.php, diunggah lewat api/chat_berkas.php).
  * Aksi (field "aksi" di JSON): kirim (bawaan), riwayat, muat, hapus.
  */
 ini_set('display_errors', '0');
 ob_start();
-require 'config.php';
-require __DIR__ . '/lib/chat_alat.php';
-require __DIR__ . '/lib/chat_berkas.php';
+require __DIR__ . '/../config.php';
+require __DIR__ . '/../lib/chat_alat.php';
+require __DIR__ . '/../lib/chat_berkas.php';
 set_time_limit(130);
 
 function jawab(array $data, int $kode = 200): never {

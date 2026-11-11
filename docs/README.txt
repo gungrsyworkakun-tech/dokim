@@ -2,7 +2,7 @@ SIM-DOKIM 3.0 (PHP native + MySQL)
 
 PEMASANGAN
 1. Taruh folder ini di htdocs (XAMPP) / www (Laragon).
-2. Import database.sql lewat phpMyAdmin. Tidak ada perubahan struktur tabel dari versi 2.4,
+2. Import database/database.sql lewat phpMyAdmin. Tidak ada perubahan struktur tabel dari versi 2.4,
    jadi database lama bisa langsung dipakai.
 3. Sesuaikan koneksi DB di config.php. Untuk XAMPP biasanya:
      DB_HOST = 'localhost'   DB_USER = 'root'   DB_PASS = ''
@@ -10,17 +10,19 @@ PEMASANGAN
 Akun contoh: superadmin / Super123!   |   admin / Admin123!
 Halaman Pengguna dan Akun saya akan mengingatkan selama password contoh ini masih dipakai.
 
-STRUKTUR
-  config.php            koneksi, sesi, fungsi bantu
-  partials/header.php   menu, bar atas, pencarian cepat
-  partials/footer.php
-  assets/style.css      tampilan
-  assets/app.js         fitur bantu di browser
-  akun.php              ganti password sendiri (baru)
-  ping.php              dipakai tombol "Perpanjang" sesi (baru)
-  berkas_lihat.php      penyaji berkas unggahan (BA, foto) khusus pengguna yang sudah login
-  uploads/.htaccess     menutup akses langsung ke folder unggahan (Apache). Di Nginx, tambahkan
-                        `location /uploads/ { deny all; }`
+STRUKTUR FOLDER
+  (root)                halaman aplikasi (index, stok, penerimaan, pengeluaran, opname, dst.),
+                        config.php (koneksi, sesi, fungsi bantu), sw.php, manifest.webmanifest
+  api/                  endpoint yang dipanggil JavaScript: chat_ai, chat_berkas (unggah lampiran chat),
+                        chat_ekspor (unduh tabel chat), ping (perpanjang sesi)
+  assets/css, js, img   tampilan, skrip browser, gambar/ikon
+  lib/                  kode bantu (pembaca/penulis XLSX, hitung seri, alat chat AI, impor)
+  partials/             kerangka halaman (header, footer)
+  database/             database.sql
+  docs/                 dokumentasi ini
+  uploads/              berkas unggahan (BA, foto); ditutup dari akses langsung, disajikan berkas_lihat.php
+  berkas_lihat.php      penyaji berkas unggahan khusus pengguna yang sudah login
+  akun.php              ganti password sendiri
 
 FITUR BANTU BARU
 - Pencarian cepat: tekan Ctrl+K (atau /) di halaman mana pun untuk melompat ke dokumen atau menu.
@@ -65,4 +67,5 @@ KEAMANAN (wajib dibaca sebelum dipakai sungguhan)
 - Ganti password akun contoh (superadmin / admin) segera setelah import database.sql.
 - Jangan simpan password database di kode: set lewat variabel lingkungan DB_HOST, DB_NAME, DB_USER, DB_PASS.
   Pakai user MySQL khusus aplikasi, bukan root.
+- Di Nginx, tambahkan `location /uploads/ { deny all; }` (di Apache sudah ada uploads/.htaccess).
 - Folder uploads/ tidak boleh bisa dibuka langsung; berkas hanya lewat berkas_lihat.php.

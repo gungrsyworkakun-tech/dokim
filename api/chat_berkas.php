@@ -6,9 +6,9 @@
 ini_set('display_errors', '0');
 ini_set('memory_limit', '256M');
 ob_start();
-require 'config.php';
-require __DIR__ . '/lib/chat_alat.php';
-require __DIR__ . '/lib/chat_berkas.php';
+require __DIR__ . '/../config.php';
+require __DIR__ . '/../lib/chat_alat.php';
+require __DIR__ . '/../lib/chat_berkas.php';
 set_time_limit(60);
 
 function jawab(array $data, int $kode = 200): never {

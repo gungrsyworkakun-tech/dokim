@@ -9,11 +9,11 @@
 <title><?= e($title) ?> · SIM-DOKIM</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="assets/style.css?v=<?= APP_VER ?>">
+<link rel="stylesheet" href="assets/css/style.css?v=<?= APP_VER ?>">
 <!-- PWA: halaman Pindai & Cek barcode bisa di-"install" ke layar utama HP -->
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<link rel="icon" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="icon" href="assets/img/icon-192.png">
 </head>
 <body class="pub">
 <div class="pub-shell">

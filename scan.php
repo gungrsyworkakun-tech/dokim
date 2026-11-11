@@ -76,7 +76,7 @@ include $sudahLogin ? 'partials/header.php' : 'partials/header_publik.php'; ?>
 </section>
 <?php endif; ?>
 
-<script src="assets/html5-qrcode.min.js?v=<?= APP_VER ?>"></script>
+<script src="assets/js/html5-qrcode.min.js?v=<?= APP_VER ?>"></script>
 <script>
 (() => {
   const status = document.getElementById('scan-status');

@@ -45,6 +45,6 @@
     </form>
   </section>
 </div>
-<script src="assets/chat_ai.js?v=<?= APP_VER ?>" defer></script>
+<script src="assets/js/chat_ai.js?v=<?= APP_VER ?>" defer></script>
 <?php endif; ?>
 </body></html>

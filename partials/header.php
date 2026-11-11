@@ -36,7 +36,7 @@ if (is_super()) {
   if ($n) $navCnt['penerimaan.php'] = [$n, 'warn', "$n penerimaan menunggu verifikasi"];
 }
 
-/* data untuk pencarian cepat & bantuan isi formulir (assets/app.js) */
+/* data untuk pencarian cepat & bantuan isi formulir (assets/js/app.js) */
 $simData = [
   'idle' => SESSION_IDLE,
   'csrf' => csrf(),
@@ -51,8 +51,8 @@ $simData = [
 <title><?= e($title) ?> · SIM-DOKIM</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="assets/style.css?v=<?= APP_VER ?>">
-<script src="assets/app.js?v=<?= APP_VER ?>" defer></script>
+<link rel="stylesheet" href="assets/css/style.css?v=<?= APP_VER ?>">
+<script src="assets/js/app.js?v=<?= APP_VER ?>" defer></script>
 </head>
 <body>
 <aside class="side" id="side">

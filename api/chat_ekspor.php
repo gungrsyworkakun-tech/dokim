@@ -1,11 +1,11 @@
 <?php
 /**
  * Unduh tabel hasil chat AI sebagai Excel (.xlsx) atau CSV.
- * GET chat_ekspor.php?pesan=<id pesan>&tabel=<nomor tabel>&format=xlsx|csv
+ * GET api/chat_ekspor.php?pesan=<id pesan>&tabel=<nomor tabel>&format=xlsx|csv
  * Hanya pemilik percakapan yang bisa mengunduh. Hanya membaca data tersimpan, jadi aman dipanggil lewat tautan biasa.
  */
-require 'config.php';
-require __DIR__ . '/lib/xlsx_writer.php';
+require __DIR__ . '/../config.php';
+require __DIR__ . '/../lib/xlsx_writer.php';
 
 function gagal(string $teks, int $kode = 404): never {
   http_response_code($kode);

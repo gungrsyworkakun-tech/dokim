@@ -162,7 +162,7 @@
     if (t.pesan_id) {
       for (const [f, label] of [['xlsx', 'Excel'], ['csv', 'CSV']]) {
         const a = document.createElement('a');
-        a.href = `chat_ekspor.php?pesan=${t.pesan_id}&tabel=${t.idx}&format=${f}`;
+        a.href = `api/chat_ekspor.php?pesan=${t.pesan_id}&tabel=${t.idx}&format=${f}`;
         a.textContent = label; a.title = 'Unduh sebagai ' + label; a.setAttribute('download', '');
         h.appendChild(a);
       }
@@ -379,7 +379,7 @@
     klip.disabled = true; chip.hidden = false; chipTeks.textContent = 'Membaca ' + file.name + '…';
     try {
       const fd = new FormData(); fd.append('csrf', csrf); fd.append('berkas', file);
-      const res = await fetch('chat_unggah.php', { method: 'POST', body: fd, credentials: 'same-origin' });
+      const res = await fetch('api/chat_berkas.php', { method: 'POST', body: fd, credentials: 'same-origin' });
       const j = await res.json().catch(() => null);
       if (!res.ok || !j || j.error) { lepasBerkas(); tambahPesan((j && j.error) || 'Berkas gagal diunggah.', 'err'); return; }
       berkasLampir = j;
@@ -395,7 +395,7 @@
 
   /* ---------- panggilan ke server ---------- */
   const api = async (data) => {
-    const res = await fetch('chat_ai.php', {
+    const res = await fetch('api/chat_ai.php', {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...data, csrf }),

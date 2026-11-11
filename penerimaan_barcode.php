@@ -128,7 +128,7 @@ include 'partials/header.php'; ?>
 <?php endif; ?>
 
 <?php if ($r['barcode_token']): ?>
-<script src="assets/qrcode.min.js?v=<?= APP_VER ?>"></script>
+<script src="assets/js/qrcode.min.js?v=<?= APP_VER ?>"></script>
 <script>
 (() => {
   const canvas = document.getElementById('qr');

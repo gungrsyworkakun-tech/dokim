@@ -38,7 +38,7 @@
       if (s <= 0) location.href = 'login.php?exp=1';
     };
     ext.addEventListener('click', async () => {
-      const r = await fetch('ping.php', { credentials: 'same-origin', cache: 'no-store' }).catch(() => null);
+      const r = await fetch('api/ping.php', { credentials: 'same-origin', cache: 'no-store' }).catch(() => null);
       if (r && r.status === 204) { end = Date.now() + SIM.idle * 1000; tick(); }
       else location.href = 'login.php?exp=1';
     });
